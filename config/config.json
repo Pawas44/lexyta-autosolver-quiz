@@ -4,9 +4,10 @@
   "check_interval_minutes": 5,
   "gemini_api_key": "AQ.Ab8RN6KBj3AWE6ny111gstjEQ97RNofqLMEaUTtnGCQJUJUyqg",
   "gemini_models": [
+    "gemini-flash-lite-latest",
     "gemini-3.1-flash-lite",
-    "gemini-3.8-flash",
-    "gemini-flash-latest"
+    "gemini-3.1-flash-lite-preview",
+    "gemini-3.8-flash"
   ],
   "active_semester_filter": "auto",
   "skip_overdue_quizzes": true,
