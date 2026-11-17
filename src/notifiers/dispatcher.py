@@ -4,6 +4,7 @@ Coordinates alerts across WhatsApp, Termux, SMS, and Telegram.
 """
 
 import logging
+from datetime import datetime, timezone, timedelta
 from typing import Optional, Any
 from src.core.config import AppConfig
 from .whatsapp import WhatsAppNotifier
@@ -12,6 +13,21 @@ from .sms import Fast2SMSNotifier
 from .telegram import TelegramNotifier
 
 logger = logging.getLogger("NotificationDispatcher")
+
+IST = timezone(timedelta(hours=5, minutes=30))
+
+def format_datetime_ist(date_str: Optional[str]) -> str:
+    """Converts UTC ISO timestamp from LMS to human-readable Indian Standard Time (IST)."""
+    if not date_str:
+        return "No Due Date Specified"
+    try:
+        clean_str = date_str.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(clean_str)
+        dt_ist = dt.astimezone(IST)
+        # Format: e.g. "18 Nov 2026, 11:59 PM (IST)"
+        return dt_ist.strftime("%d %b %Y, %I:%M %p (IST)")
+    except Exception:
+        return str(date_str)
 
 class NotificationDispatcher:
     def __init__(self, config: AppConfig):
@@ -42,11 +58,12 @@ class NotificationDispatcher:
 
     def notify_assignment(self, subject: str, assignment_name: str, due_date: Optional[str], details: Optional[str] = None):
         """Dispatches an alert when a new assignment is posted."""
+        formatted_due = format_datetime_ist(due_date)
         msg = (
             f"📢 *LMS New Assignment Alert!*\n\n"
             f"📚 *Subject:* {subject}\n"
             f"📝 *Assignment:* {assignment_name}\n"
-            f"📅 *Due Date:* {due_date or 'No Due Date Specified'}\n"
+            f"⏰ *Due Date & Time:* {formatted_due}\n"
         )
         if details:
             msg += f"💡 *Details:* {details[:140]}\n"
