@@ -24,7 +24,7 @@ class AppConfig:
     check_interval_minutes: int = 15
     gemini_api_key: str = DEFAULT_GEMINI_KEY
     gemini_models: List[str] = field(default_factory=lambda: list(DEFAULT_MODELS))
-    active_semester_filter: str = "BCA3"
+    active_semester_filter: str = "auto"
     skip_overdue_quizzes: bool = True
     auto_solve_quizzes: bool = True
     notifications: Dict[str, Any] = field(default_factory=lambda: {

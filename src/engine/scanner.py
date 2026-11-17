@@ -3,6 +3,7 @@ LMS Scanning & Orchestration Engine
 Scans subjects, identifies new quizzes and assignments, triggers AI solving and sends alerts.
 """
 
+import re
 import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
@@ -25,6 +26,54 @@ def is_overdue(due_date_str: Optional[str]) -> bool:
         return due < datetime.now(timezone.utc)
     except Exception:
         return False
+
+def detect_active_classes(classes: List[Dict[str, Any]], active_filter: str) -> List[Dict[str, Any]]:
+    """
+    Intelligently selects active semester classes.
+    If active_filter is 'auto', empty, or 'latest', it automatically discovers
+    the highest semester enrolled (e.g. BCA3 -> BCA4 -> BCA5).
+    Zero manual upgrade needed when moving to a new semester!
+    """
+    if not classes:
+        return []
+
+    clean_filter = active_filter.strip().lower() if active_filter else "auto"
+
+    # Specific manual filter override (e.g. "bca2", "os")
+    if clean_filter not in ["auto", "latest", "all", ""]:
+        filtered = [c for c in classes if clean_filter in c.get("name", "").lower()]
+        if filtered:
+            return filtered
+
+    if clean_filter == "all":
+        return classes
+
+    # AUTO: Parse semester numbers from subject codes (e.g. BCA1, BCA2, BCA3...)
+    sem_data = []
+    for cls in classes:
+        name = cls.get("name", "")
+        match = re.search(r'([a-zA-Z]+)(\d+)', name)
+        if match:
+            prefix = match.group(1).upper()
+            sem_num = int(match.group(2))
+            sem_data.append((prefix, sem_num, cls))
+
+    if sem_data:
+        max_sem_by_prefix = {}
+        for prefix, num, _ in sem_data:
+            if prefix not in max_sem_by_prefix or num > max_sem_by_prefix[prefix]:
+                max_sem_by_prefix[prefix] = num
+
+        auto_classes = [
+            cls for prefix, num, cls in sem_data
+            if num == max_sem_by_prefix.get(prefix)
+        ]
+        if auto_classes:
+            detected_tags = [f"{p}{max_sem_by_prefix[p]}" for p in max_sem_by_prefix]
+            logger.info(f"Auto-detected current active semester: {', '.join(detected_tags)} ({len(auto_classes)} subjects)")
+            return auto_classes
+
+    return classes
 
 class LMSScanner:
     def __init__(self, config: AppConfig, state: StateManager, client: LexytaAPIClient, solver: GeminiQuizSolver, notifier: NotificationDispatcher):
@@ -61,11 +110,7 @@ class LMSScanner:
             logger.info(f"Checking Program: {prog_name} ({prog_id})")
 
             classes = self.client.get_program_classes(prog_id)
-            if active_filter:
-                filtered = [c for c in classes if active_filter in c.get("name", "").lower()]
-                classes_to_check = filtered if filtered else classes
-            else:
-                classes_to_check = classes
+            classes_to_check = detect_active_classes(classes, active_filter)
 
             logger.info(f"Scanning {len(classes_to_check)} subjects...")
 

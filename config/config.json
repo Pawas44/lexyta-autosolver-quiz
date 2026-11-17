@@ -10,7 +10,7 @@
     "gemini-3.8-flash",
     "gemini-flash-latest"
   ],
-  "active_semester_filter": "BCA3",
+  "active_semester_filter": "auto",
   "skip_overdue_quizzes": true,
   "auto_solve_quizzes": true,
   "notifications": {
