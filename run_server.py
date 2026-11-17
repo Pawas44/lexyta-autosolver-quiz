@@ -11,6 +11,7 @@ import os
 import time
 import threading
 import logging
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
@@ -23,6 +24,26 @@ setup_logger()
 logger = logging.getLogger("MasterServer")
 
 CHECK_INTERVAL_MINUTES = 15
+
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(b"OK - Lexyta LMS Multi-User Telegram Server is running 24/7!\n")
+
+    def log_message(self, format, *args):
+        pass
+
+def start_health_check_server():
+    """Binds an HTTP server to $PORT so Render / Cloud platforms detect the service as healthy."""
+    port = int(os.environ.get("PORT", 10000))
+    try:
+        server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+        logger.info(f"Health-check HTTP server listening on 0.0.0.0:{port} (Render / Cloud port binding active)")
+        server.serve_forever()
+    except Exception as e:
+        logger.error(f"Failed to bind health-check HTTP server on port {port}: {e}")
 
 def background_scanner_loop(scanner: MultiScanner):
     """Background daemon thread scanning all registered students periodically."""
@@ -41,6 +62,10 @@ def main():
     logger.info(" Starting Lexyta LMS Multi-User Autonomous Telegram Server")
     logger.info("="*60)
 
+    # 1. Start HTTP health-check server for Render port detection
+    http_thread = threading.Thread(target=start_health_check_server, daemon=True)
+    http_thread.start()
+
     token = os.getenv("MASTER_BOT_TOKEN") or MASTER_BOT_TOKEN
     user_manager = UserManager("data/users.json")
     scanner = MultiScanner(user_manager=user_manager, bot_token=token)
@@ -55,11 +80,11 @@ def main():
 
     bot_server.on_demand_scanner = on_demand_scan
 
-    # Start background scanner thread
+    # 2. Start background scanner thread
     t = threading.Thread(target=background_scanner_loop, args=(scanner,), daemon=True)
     t.start()
 
-    # Start Telegram bot polling on main thread
+    # 3. Start Telegram bot polling on main thread
     try:
         bot_server.poll()
     except KeyboardInterrupt:
