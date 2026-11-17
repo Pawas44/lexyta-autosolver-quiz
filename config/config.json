@@ -1,8 +1,6 @@
 {
   "email": "pawasnishant1327@gmail.com",
   "password": "p7l8PQOI!\\",
-  "phone_number": "9315135782",
-  "country_code": "+91",
   "check_interval_minutes": 15,
   "gemini_api_key": "AQ.Ab8RN6KBj3AWE6ny111gstjEQ97RNofqLMEaUTtnGCQJUJUyqg",
   "gemini_models": [
@@ -14,14 +12,6 @@
   "skip_overdue_quizzes": true,
   "auto_solve_quizzes": true,
   "notifications": {
-    "whatsapp_callmebot": {
-      "enabled": false,
-      "api_key": ""
-    },
-    "fast2sms": {
-      "enabled": false,
-      "api_key": ""
-    },
     "telegram": {
       "enabled": true,
       "bot_token": "9029165430:AAHDFq9dIBa_GzpBUzokzsPaX-tBWZDMwcw",

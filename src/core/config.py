@@ -19,7 +19,7 @@ DEFAULT_MODELS = [
 class AppConfig:
     email: str = "pawasnishant1327@gmail.com"
     password: str = "p7l8PQOI!\\"
-    phone_number: str = "9315135782"
+    phone_number: str = ""
     country_code: str = "+91"
     check_interval_minutes: int = 15
     gemini_api_key: str = DEFAULT_GEMINI_KEY
@@ -28,18 +28,10 @@ class AppConfig:
     skip_overdue_quizzes: bool = True
     auto_solve_quizzes: bool = True
     notifications: Dict[str, Any] = field(default_factory=lambda: {
-        "whatsapp_callmebot": {
-            "enabled": True,
-            "api_key": ""
-        },
-        "fast2sms": {
-            "enabled": False,
-            "api_key": ""
-        },
         "telegram": {
-            "enabled": False,
-            "bot_token": "",
-            "chat_id": ""
+            "enabled": True,
+            "bot_token": "9029165430:AAHDFq9dIBa_GzpBUzokzsPaX-tBWZDMwcw",
+            "chat_id": "8224782152"
         },
         "termux": {
             "enabled": True
@@ -78,7 +70,7 @@ class AppConfig:
         else:
             password = data.get("password", "p7l8PQOI!\\")
 
-        phone_number = os.getenv("TARGET_PHONE") or data.get("phone_number", "9315135782")
+        phone_number = os.getenv("TARGET_PHONE") or data.get("phone_number", "")
         country_code = os.getenv("COUNTRY_CODE") or data.get("country_code", "+91")
         check_interval = int(os.getenv("CHECK_INTERVAL") or data.get("check_interval_minutes", 15))
         gemini_key = os.getenv("GEMINI_API_KEY") or data.get("gemini_api_key", DEFAULT_GEMINI_KEY)

@@ -37,8 +37,8 @@ class TermuxNotifier(BaseNotifier):
             except Exception as e:
                 logger.warning(f"Termux notification failed: {e}")
 
-        # 2. Native SMS from SIM
-        if has_sms:
+        # 2. Native SMS from SIM (if phone provided)
+        if has_sms and self.target_phone:
             try:
                 plain = message.replace("*", "")
                 subprocess.run([
