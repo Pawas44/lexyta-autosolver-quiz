@@ -19,6 +19,7 @@ from src.core.config import DEFAULT_GEMINI_KEY
 from src.engine.scanner import detect_active_classes, is_overdue
 from src.notifiers.dispatcher import format_datetime_ist
 from src.solvers.gemini_solver import GeminiQuizSolver
+from src.solvers.human_pacer import calculate_target_duration_seconds, wait_with_human_pacing
 from src.notifiers.telegram import format_quiz_progress_msg, format_quiz_submitted_msg
 
 logger = logging.getLogger("TelegramServer")
@@ -597,12 +598,19 @@ class TelegramServer:
 
                             answers = solver.solve_quiz(sections, on_progress=on_progress)
                             if answers:
-                                if prog_msg_id:
-                                    self.edit_message(
-                                        chat_id,
-                                        prog_msg_id,
-                                        format_quiz_progress_msg(class_name, item_name, len(answers), total_q, "Submitting answers to LMS...")
-                                    )
+                                # Realistic human pacing (e.g. 20 min quiz -> ~13 min)
+                                time_limit = item.get("time_limit")
+                                target_dur = calculate_target_duration_seconds(time_limit, total_q, due_date_str=due)
+
+                                def on_pace_tick(elapsed_sec: float, remaining_sec: float, status_str: str):
+                                    if prog_msg_id:
+                                        self.edit_message(
+                                            chat_id,
+                                            prog_msg_id,
+                                            format_quiz_progress_msg(class_name, item_name, len(answers), total_q, status_str)
+                                        )
+
+                                wait_with_human_pacing(t_start, target_dur, on_tick=on_pace_tick, tick_interval=30.0)
 
                                 if client.submit_quiz_answers(class_id, item_id, answers):
                                     elapsed = time.time() - t_start

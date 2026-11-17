@@ -13,6 +13,7 @@ from src.core.config import AppConfig
 from src.core.state import StateManager
 from src.client.lexyta_api import LexytaAPIClient
 from src.solvers.gemini_solver import GeminiQuizSolver
+from src.solvers.human_pacer import calculate_target_duration_seconds, wait_with_human_pacing
 from src.notifiers.dispatcher import NotificationDispatcher
 from src.notifiers.telegram import format_quiz_progress_msg, format_quiz_submitted_msg
 
@@ -227,11 +228,18 @@ class LMSScanner:
                                 tg.edit_message(prog_msg_id, f"⚠️ Failed to generate answers for <b>{item_name}</b>.")
                             continue
 
-                        if tg and prog_msg_id:
-                            tg.edit_message(
-                                prog_msg_id,
-                                format_quiz_progress_msg(class_name, item_name, len(answers), total_q, "Submitting all answers to LMS...")
-                            )
+                        # Realistic human pacing (e.g. 20 min quiz -> ~13 min)
+                        time_limit = item.get("time_limit")
+                        target_dur = calculate_target_duration_seconds(time_limit, total_q, due_date_str=due_date)
+
+                        def on_pace_tick(elapsed_sec: float, remaining_sec: float, status_str: str):
+                            if tg and prog_msg_id:
+                                tg.edit_message(
+                                    prog_msg_id,
+                                    format_quiz_progress_msg(class_name, item_name, len(answers), total_q, status_str)
+                                )
+
+                        wait_with_human_pacing(t_quiz_start, target_dur, on_tick=on_pace_tick, tick_interval=30.0)
 
                         # Submit answers to LMS
                         logger.info(f"Submitting {len(answers)} answers for '{item_name}'...")

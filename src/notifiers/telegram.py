@@ -112,12 +112,15 @@ def format_quiz_progress_msg(subject: str, quiz_name: str, completed: int, total
 
 def format_quiz_submitted_msg(subject: str, quiz_name: str, answered: int, total: int, elapsed_sec: float) -> str:
     """Formats final submission confirmation for Telegram."""
+    s = int(elapsed_sec)
+    m, s = divmod(s, 60)
+    dur_str = f"{m}m {s}s" if m > 0 else f"{s}s"
     return (
         f"🎉 <b>LMS Quiz Solved & Submitted!</b>\n\n"
         f"📚 <b>Subject:</b> {subject}\n"
         f"📝 <b>Quiz:</b> {quiz_name}\n"
         f"✅ <b>Answered:</b> {answered} / {total} questions (100%)\n"
-        f"⏱️ <b>Time Taken:</b> {elapsed_sec:.1f} seconds\n"
+        f"⏱️ <b>Time Recorded on LMS:</b> {dur_str} (Stealth Human Pacing 🛡️)\n"
         f"🎯 <b>Status:</b> SUBMITTED & RECORDED\n\n"
         f"🌐 https://lms.lexyta.com"
     )
