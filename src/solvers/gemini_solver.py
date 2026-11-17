@@ -36,8 +36,8 @@ class GeminiQuizSolver(BaseQuizSolver):
         self.api_key = api_key
         self.models = models or self.DEFAULT_MODELS
 
-    def solve_quiz(self, quiz_sections: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Solves all questions in quiz sections using Gemini AI with smart batching."""
+    def solve_quiz(self, quiz_sections: List[Dict[str, Any]], on_progress: Optional[Any] = None) -> Dict[str, Any]:
+        """Solves all questions in quiz sections using Gemini AI with smart batching and live progress reporting."""
         payload: Dict[str, Any] = {}
         all_questions = []
 
@@ -51,6 +51,12 @@ class GeminiQuizSolver(BaseQuizSolver):
         total = len(all_questions)
         logger.info(f"Starting solver for {total} question(s) using high-speed chunked batching...")
 
+        if on_progress:
+            try:
+                on_progress(0, total, "AI solver initialized...")
+            except Exception:
+                pass
+
         # Process in chunks of 10 questions to solve rapidly and avoid 15 RPM rate limits
         CHUNK_SIZE = 10
         for i in range(0, total, CHUNK_SIZE):
@@ -61,6 +67,18 @@ class GeminiQuizSolver(BaseQuizSolver):
 
             batch_answers = self._solve_question_batch(chunk)
             payload.update(batch_answers)
+
+            if on_progress:
+                try:
+                    on_progress(len(payload), total, f"Batch {chunk_num}/{total_chunks} solved ({len(payload)}/{total} answered)")
+                except Exception:
+                    pass
+
+        if on_progress:
+            try:
+                on_progress(len(payload), total, "All questions answered! Preparing submission...")
+            except Exception:
+                pass
 
         logger.info(f"Quiz solving completed: {len(payload)}/{total} answered.")
         return payload

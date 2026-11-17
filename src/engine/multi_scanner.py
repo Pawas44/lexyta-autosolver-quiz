@@ -3,13 +3,14 @@ Multi-Tenant LMS Scanner
 Iterates over all registered students, solves quizzes, alerts on assignments and marks.
 """
 
+import time
 import logging
 from typing import Dict, Any, Optional
 
 from src.core.user_manager import UserManager
 from src.client.lexyta_api import LexytaAPIClient
 from src.solvers.gemini_solver import GeminiQuizSolver
-from src.notifiers.telegram import TelegramNotifier
+from src.notifiers.telegram import TelegramNotifier, format_quiz_progress_msg, format_quiz_submitted_msg
 from src.notifiers.dispatcher import format_datetime_ist
 from src.engine.scanner import is_overdue, detect_active_classes
 from src.core.config import DEFAULT_GEMINI_KEY
@@ -101,25 +102,57 @@ class MultiScanner:
                         logger.info(f"[QUIZ FOUND] {class_name} | {item_name}")
 
                         if not dry_run:
-                            # Start attempt
+                            t_start = time.time()
+                            # 1. Send initial Telegram alert
+                            init_msg = (
+                                f"🚀 <b>LMS Quiz Detected & Started!</b>\n\n"
+                                f"📚 <b>Subject:</b> {class_name}\n"
+                                f"📝 <b>Quiz:</b> {item_name}\n"
+                                f"⏳ <b>Status:</b> Initializing attempt and downloading questions..."
+                            )
+                            prog_msg_id = notifier.send_message(init_msg)
+
+                            # 2. Start attempt
                             if status == "NOT_ATTEMPTED":
                                 client.start_quiz_attempt(class_id, item_id)
 
                             sections = client.get_quiz_questions(class_id, item_id)
                             if sections:
-                                answers = solver.solve_quiz(sections)
-                                if answers and client.submit_quiz_answers(class_id, item_id, answers):
-                                    self.user_manager.mark_quiz_solved(chat_id, item_id)
-                                    quizzes_processed += 1
-
-                                    quiz_msg = (
-                                        f"🎉 <b>LMS Quiz Auto-Solved & Submitted!</b>\n\n"
-                                        f"📚 <b>Subject:</b> {class_name}\n"
-                                        f"📝 <b>Quiz:</b> {item_name}\n"
-                                        f"✅ <b>Status:</b> Solved with Gemini AI & Submitted\n"
-                                        f"\n🌐 https://lms.lexyta.com"
+                                total_q = sum(len(s.get("questions", [])) for s in sections)
+                                if prog_msg_id:
+                                    notifier.edit_message(
+                                        prog_msg_id,
+                                        format_quiz_progress_msg(class_name, item_name, 0, total_q, f"Found {total_q} questions. Gemini AI solver running...")
                                     )
-                                    notifier.send(quiz_msg)
+
+                                def on_progress(completed: int, total: int, step_desc: str):
+                                    if prog_msg_id:
+                                        notifier.edit_message(
+                                            prog_msg_id,
+                                            format_quiz_progress_msg(class_name, item_name, completed, total, step_desc)
+                                        )
+
+                                answers = solver.solve_quiz(sections, on_progress=on_progress)
+                                if answers:
+                                    if prog_msg_id:
+                                        notifier.edit_message(
+                                            prog_msg_id,
+                                            format_quiz_progress_msg(class_name, item_name, len(answers), total_q, "Submitting all answers to LMS...")
+                                        )
+
+                                    if client.submit_quiz_answers(class_id, item_id, answers):
+                                        elapsed = time.time() - t_start
+                                        self.user_manager.mark_quiz_solved(chat_id, item_id)
+                                        quizzes_processed += 1
+
+                                        final_msg = format_quiz_submitted_msg(class_name, item_name, len(answers), total_q, elapsed)
+                                        if prog_msg_id:
+                                            notifier.edit_message(prog_msg_id, final_msg)
+                                        else:
+                                            notifier.send(final_msg)
+                                    else:
+                                        if prog_msg_id:
+                                            notifier.edit_message(prog_msg_id, f"❌ Submission failed for <b>{item_name}</b>.")
 
                     # 3. ASSIGNMENT WORKFLOW
                     else:

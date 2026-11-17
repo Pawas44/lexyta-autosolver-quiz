@@ -4,6 +4,7 @@ Scans subjects, identifies new quizzes and assignments, triggers AI solving and 
 """
 
 import re
+import time
 import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
@@ -13,6 +14,7 @@ from src.core.state import StateManager
 from src.client.lexyta_api import LexytaAPIClient
 from src.solvers.gemini_solver import GeminiQuizSolver
 from src.notifiers.dispatcher import NotificationDispatcher
+from src.notifiers.telegram import format_quiz_progress_msg, format_quiz_submitted_msg
 
 logger = logging.getLogger("LMSScanner")
 
@@ -174,35 +176,80 @@ class LMSScanner:
                             quizzes_processed += 1
                             continue
 
+                        t_quiz_start = time.time()
+                        tg = self.notifier.get_telegram_notifier()
+                        prog_msg_id = None
+                        if tg:
+                            init_text = (
+                                f"🚀 <b>LMS Quiz Detected & Started!</b>\n\n"
+                                f"📚 <b>Subject:</b> {class_name}\n"
+                                f"📝 <b>Quiz:</b> {item_name}\n"
+                                f"⏳ <b>Status:</b> Initializing attempt and downloading questions..."
+                            )
+                            prog_msg_id = tg.send_message(init_text)
+
                         # Start attempt if needed
                         if status == "NOT_ATTEMPTED":
                             start_res = self.client.start_quiz_attempt(class_id, item_id)
                             if not start_res:
                                 logger.error(f"Failed to start attempt for '{item_name}'. Skipping.")
+                                if tg and prog_msg_id:
+                                    tg.edit_message(prog_msg_id, f"⚠️ Failed to start quiz attempt for <b>{item_name}</b>.")
                                 continue
 
                         # Fetch questions
                         sections = self.client.get_quiz_questions(class_id, item_id)
                         if not sections:
                             logger.error(f"Could not fetch questions for '{item_name}'. Skipping.")
+                            if tg and prog_msg_id:
+                                tg.edit_message(prog_msg_id, f"⚠️ Could not load questions for <b>{item_name}</b>.")
                             continue
 
+                        total_q = sum(len(s.get("questions", [])) for s in sections)
+                        if tg and prog_msg_id:
+                            tg.edit_message(
+                                prog_msg_id,
+                                format_quiz_progress_msg(class_name, item_name, 0, total_q, f"Found {total_q} questions. Gemini AI solver running...")
+                            )
+
+                        def on_progress(completed: int, total: int, step_desc: str):
+                            if tg and prog_msg_id:
+                                tg.edit_message(
+                                    prog_msg_id,
+                                    format_quiz_progress_msg(class_name, item_name, completed, total, step_desc)
+                                )
+
                         # Solve questions with Gemini AI
-                        answers = self.solver.solve_quiz(sections)
+                        answers = self.solver.solve_quiz(sections, on_progress=on_progress)
                         if not answers:
                             logger.error(f"Failed to generate answers for '{item_name}'. Skipping.")
+                            if tg and prog_msg_id:
+                                tg.edit_message(prog_msg_id, f"⚠️ Failed to generate answers for <b>{item_name}</b>.")
                             continue
+
+                        if tg and prog_msg_id:
+                            tg.edit_message(
+                                prog_msg_id,
+                                format_quiz_progress_msg(class_name, item_name, len(answers), total_q, "Submitting all answers to LMS...")
+                            )
 
                         # Submit answers to LMS
                         logger.info(f"Submitting {len(answers)} answers for '{item_name}'...")
                         success = self.client.submit_quiz_answers(class_id, item_id, answers)
                         if success:
-                            logger.info(f"🎉 Quiz '{item_name}' SUBMITTED SUCCESSFULLY!")
+                            elapsed = time.time() - t_quiz_start
+                            logger.info(f"🎉 Quiz '{item_name}' SUBMITTED SUCCESSFULLY in {elapsed:.1f}s!")
                             self.state.mark_quiz_solved(item_id)
-                            self.notifier.notify_quiz_solved(class_name, item_name)
+                            final_msg = format_quiz_submitted_msg(class_name, item_name, len(answers), total_q, elapsed)
+                            if tg and prog_msg_id:
+                                tg.edit_message(prog_msg_id, final_msg)
+                            else:
+                                self.notifier.notify_quiz_solved(class_name, item_name)
                             quizzes_processed += 1
                         else:
                             logger.error(f"Submission failed for quiz '{item_name}'")
+                            if tg and prog_msg_id:
+                                tg.edit_message(prog_msg_id, f"❌ Submission failed for <b>{item_name}</b>.")
 
                     # ---------------------------------------------------------
                     # 2. ASSIGNMENT WORKFLOW

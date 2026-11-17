@@ -56,6 +56,13 @@ class NotificationDispatcher:
         if tg_cfg.get("enabled") and tg_cfg.get("bot_token") and tg_cfg.get("chat_id"):
             self.notifiers.append(TelegramNotifier(bot_token=tg_cfg["bot_token"], chat_id=tg_cfg["chat_id"]))
 
+    def get_telegram_notifier(self) -> Optional[TelegramNotifier]:
+        """Returns active TelegramNotifier instance if configured."""
+        for n in self.notifiers:
+            if isinstance(n, TelegramNotifier):
+                return n
+        return None
+
     def notify_assignment(self, subject: str, assignment_name: str, due_date: Optional[str], details: Optional[str] = None):
         """Dispatches an alert when a new assignment is posted."""
         formatted_due = format_datetime_ist(due_date)
