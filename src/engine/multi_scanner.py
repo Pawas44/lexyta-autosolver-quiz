@@ -69,7 +69,19 @@ class MultiScanner:
                         grade_obj = latest_attempt.get("grade")
                         if grade_obj and grade_obj.get("released"):
                             grade_val = grade_obj.get("grade")
+                            # Only notify if grade exists AND we haven't notified yet
                             if grade_val is not None and not self.user_manager.is_grade_notified(chat_id, item_id):
+                                # Extra safety: skip if grade was released more than 24h ago (stale)
+                                import datetime as _dt
+                                released_at = grade_obj.get("released_at") or grade_obj.get("updated_at")
+                                if released_at:
+                                    try:
+                                        rel_time = _dt.datetime.fromisoformat(released_at.replace("Z", "+00:00"))
+                                        if (_dt.datetime.now(_dt.timezone.utc) - rel_time).total_seconds() > 86400:
+                                            self.user_manager.mark_grade_notified(chat_id, item_id)
+                                            continue
+                                    except Exception:
+                                        pass
                                 grader_name = ""
                                 graded_by = grade_obj.get("graded_by")
                                 if graded_by:
@@ -158,24 +170,27 @@ class MultiScanner:
                     else:
                         if status in ["COMPLETED", "GRADED"]:
                             continue
+                        if overdue:
+                            continue
                         if self.user_manager.is_assignment_notified(chat_id, item_id):
                             continue
-
-                        if not overdue:
-                            formatted_due = format_datetime_ist(due_date)
-                            asgn_msg = (
-                                f"📢 <b>LMS New Assignment Alert!</b>\n\n"
-                                f"📚 <b>Subject:</b> {class_name}\n"
-                                f"📝 <b>Assignment:</b> {item_name}\n"
-                                f"⏰ <b>Due Date & Time:</b> {formatted_due}\n\n"
-                                f"🌐 Open LMS: https://lms.lexyta.com"
-                            )
-                            if not dry_run:
-                                notifier.send(asgn_msg)
-                                self.user_manager.mark_assignment_notified(chat_id, item_id)
-                                assignments_notified += 1
-                        else:
+                        # Skip if user already has a submission (server-side check)
+                        if latest_attempt and latest_attempt.get("status") in ["IN_PROGRESS", "SUBMITTED"]:
                             self.user_manager.mark_assignment_notified(chat_id, item_id)
+                            continue
+
+                        formatted_due = format_datetime_ist(due_date)
+                        asgn_msg = (
+                            f"📢 <b>LMS New Assignment Alert!</b>\n\n"
+                            f"📚 <b>Subject:</b> {class_name}\n"
+                            f"📝 <b>Assignment:</b> {item_name}\n"
+                            f"⏰ <b>Due Date & Time:</b> {formatted_due}\n\n"
+                            f"🌐 Open LMS: https://lms.lexyta.com"
+                        )
+                        if not dry_run:
+                            notifier.send(asgn_msg)
+                            self.user_manager.mark_assignment_notified(chat_id, item_id)
+                            assignments_notified += 1
 
         return {"quizzes": quizzes_processed, "assignments": assignments_notified}
 

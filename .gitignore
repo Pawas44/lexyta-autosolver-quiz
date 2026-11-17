@@ -9,6 +9,8 @@ logs/
 
 # Local State / Sensitive credentials
 *.tmp
+config/config.json
+data/users.json
 
 # Environment variables
 .env
