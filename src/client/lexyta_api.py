@@ -173,3 +173,65 @@ class LexytaAPIClient:
             return None
         except Exception:
             return None
+
+    def get_class_resources(self, class_id: str) -> List[Dict[str, Any]]:
+        """Fetches resources attached to a class (e.g. Course outlines, Lesson Delivery Plans, Timetables)."""
+        self._sync_csrf()
+        url = f"{self.BASE_URL}/classes/{class_id}/resources?page=1&limit=50"
+        try:
+            resp = self.session.get(url, timeout=20)
+            if resp.status_code == 200:
+                return resp.json().get("items", [])
+            return []
+        except Exception as e:
+            logger.warning(f"Failed to fetch resources for class {class_id}: {e}")
+            return []
+
+    def get_course_topics(self, course_id: str) -> List[Dict[str, Any]]:
+        """Fetches syllabus topics and attached PPTs/notes for a course."""
+        self._sync_csrf()
+        url = f"{self.BASE_URL}/syllables/{course_id}/topics"
+        try:
+            resp = self.session.get(url, timeout=20)
+            if resp.status_code == 200:
+                return resp.json().get("items", [])
+            return []
+        except Exception as e:
+            logger.warning(f"Failed to fetch syllabus topics for course {course_id}: {e}")
+            return []
+
+    def get_file_download_url(self, file_id: str) -> Optional[str]:
+        """Resolves a pre-signed S3 download URL from LMS file storage."""
+        self._sync_csrf()
+        url = f"{self.BASE_URL}/files/download/{file_id}"
+        try:
+            resp = self.session.get(url, timeout=20)
+            if resp.status_code == 200:
+                s3_url = resp.json()
+                if isinstance(s3_url, str) and s3_url.startswith("http"):
+                    return s3_url
+            logger.warning(f"Could not get download URL for file {file_id}: HTTP {resp.status_code}")
+            return None
+        except Exception as e:
+            logger.error(f"Error fetching download URL for file {file_id}: {e}")
+            return None
+
+    def download_file_bytes(self, url_or_file_id: str) -> Optional[bytes]:
+        """Downloads file content as raw bytes given a pre-signed URL or a LMS file ID."""
+        target_url = url_or_file_id
+        if not target_url.startswith("http"):
+            resolved = self.get_file_download_url(url_or_file_id)
+            if not resolved:
+                return None
+            target_url = resolved
+
+        try:
+            # S3 pre-signed URLs don't need LMS session cookies/headers
+            r = requests.get(target_url, stream=True, timeout=45)
+            if r.status_code == 200:
+                return r.content
+            logger.warning(f"Failed to download file from S3: HTTP {r.status_code}")
+            return None
+        except Exception as e:
+            logger.error(f"Network error downloading file: {e}")
+            return None

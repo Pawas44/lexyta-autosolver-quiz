@@ -47,6 +47,17 @@ class UserManager:
     def get_all_active_users(self) -> List[Dict[str, Any]]:
         return [u for u in self.users.values() if u.get("is_active", True)]
 
+    def add_user(self, chat_id: Any, email: str, password: str, gemini_api_key: str = "", student_name: str = "Student", **kwargs):
+        """Convenience method to register a student with credentials."""
+        data = {
+            "email": email,
+            "password": password,
+            "gemini_api_key": gemini_api_key,
+            "student_name": student_name,
+            **kwargs
+        }
+        self.register_or_update_user(chat_id, data)
+
     def register_or_update_user(self, chat_id: Any, data: Dict[str, Any]):
         cid = str(chat_id)
         if cid not in self.users:
