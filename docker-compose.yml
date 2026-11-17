@@ -1,0 +1,9 @@
+services:
+  lms-bot:
+    build: .
+    container_name: lexyta-lms-bot
+    restart: always
+    volumes:
+      - ./config:/app/config
+      - ./data:/app/data
+      - ./logs:/app/logs

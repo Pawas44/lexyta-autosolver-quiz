@@ -1,0 +1,34 @@
+name: LMS Lexyta Auto Solver & Notifier
+
+on:
+  schedule:
+    # Runs every 20 minutes (24/7 in the cloud for free)
+    - cron: '*/20 * * * *'
+  workflow_dispatch: # Allows manual trigger from GitHub UI
+
+jobs:
+  check-lms:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run LMS Scanner
+        env:
+          LMS_EMAIL: ${{ secrets.LMS_EMAIL || 'pawasnishant1327@gmail.com' }}
+          LMS_PASSWORD: ${{ secrets.LMS_PASSWORD || 'p7l8PQOI!\\' }}
+          TARGET_PHONE: ${{ secrets.TARGET_PHONE || '9315135782' }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || 'AQ.Ab8RN6KBj3AWE6ny111gstjEQ97RNofqLMEaUTtnGCQJUJUyqg' }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN || '9029165430:AAHDFq9dIBa_GzpBUzokzsPaX-tBWZDMwcw' }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID || '8224782152' }}
+        run: |
+          python run.py --once
