@@ -70,41 +70,10 @@ def main():
 
     user_manager = UserManager("data/users.json")
 
-    # Check if local config.json exists with valid credentials (private repo mode)
-    cfg_bot_token = ""
-    local_cfg = "config/config.json"
-    global CHECK_INTERVAL_MINUTES
-    if os.path.exists(local_cfg):
-        try:
-            with open(local_cfg, "r", encoding="utf-8") as f:
-                cfg_data = json.load(f)
-            if "check_interval_minutes" in cfg_data:
-                CHECK_INTERVAL_MINUTES = int(cfg_data["check_interval_minutes"])
-            cfg_bot_token = cfg_data.get("notifications", {}).get("telegram", {}).get("bot_token", "")
-            p_email = cfg_data.get("email")
-            p_pass = cfg_data.get("password")
-            p_chat_id = cfg_data.get("notifications", {}).get("telegram", {}).get("chat_id")
-            p_gemini = cfg_data.get("gemini_api_key")
+    # Use Public Master Bot Token (@Lexytasolver_bot)
+    token = os.getenv("MASTER_BOT_TOKEN") or MASTER_BOT_TOKEN
+    logger.info(f"Active Master Bot Token: {token[:10]}... (@Lexytasolver_bot)")
 
-            # Auto-register configured account if credentials exist
-            if p_email and p_pass and p_chat_id:
-                try:
-                    cid = int(p_chat_id)
-                    if not user_manager.get_user(cid):
-                        logger.info(f"Auto-registering configured account from config.json: {p_email}")
-                        user_manager.add_user(
-                            chat_id=cid,
-                            email=p_email,
-                            password=p_pass,
-                            gemini_api_key=p_gemini or "",
-                            student_name="Pawas Pant (Admin)"
-                        )
-                except ValueError:
-                    pass
-        except Exception as e:
-            logger.warning(f"Could not parse local config.json: {e}")
-
-    token = os.getenv("MASTER_BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN") or cfg_bot_token or MASTER_BOT_TOKEN
     access_controller = AccessController()
     scanner = MultiScanner(user_manager=user_manager, bot_token=token, access_controller=access_controller)
     bot_server = TelegramServer(bot_token=token, user_manager=user_manager, access_controller=access_controller)
