@@ -24,7 +24,7 @@ from src.engine.multi_scanner import MultiScanner
 setup_logger()
 logger = logging.getLogger("MasterServer")
 
-CHECK_INTERVAL_MINUTES = 15
+CHECK_INTERVAL_MINUTES = int(os.getenv("CHECK_INTERVAL_MINUTES", "5"))
 
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -72,10 +72,13 @@ def main():
     # Check if local config.json exists with valid credentials (private repo mode)
     cfg_bot_token = ""
     local_cfg = "config/config.json"
+    global CHECK_INTERVAL_MINUTES
     if os.path.exists(local_cfg):
         try:
             with open(local_cfg, "r", encoding="utf-8") as f:
                 cfg_data = json.load(f)
+            if "check_interval_minutes" in cfg_data:
+                CHECK_INTERVAL_MINUTES = int(cfg_data["check_interval_minutes"])
             cfg_bot_token = cfg_data.get("notifications", {}).get("telegram", {}).get("bot_token", "")
             p_email = cfg_data.get("email")
             p_pass = cfg_data.get("password")

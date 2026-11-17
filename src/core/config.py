@@ -21,7 +21,7 @@ class AppConfig:
     password: str = "p7l8PQOI!\\"
     phone_number: str = ""
     country_code: str = "+91"
-    check_interval_minutes: int = 15
+    check_interval_minutes: int = 5
     gemini_api_key: str = DEFAULT_GEMINI_KEY
     gemini_models: List[str] = field(default_factory=lambda: list(DEFAULT_MODELS))
     active_semester_filter: str = "auto"
@@ -72,7 +72,7 @@ class AppConfig:
 
         phone_number = os.getenv("TARGET_PHONE") or data.get("phone_number", "")
         country_code = os.getenv("COUNTRY_CODE") or data.get("country_code", "+91")
-        check_interval = int(os.getenv("CHECK_INTERVAL") or data.get("check_interval_minutes", 15))
+        check_interval = int(os.getenv("CHECK_INTERVAL") or data.get("check_interval_minutes", 5))
         gemini_key = os.getenv("GEMINI_API_KEY") or data.get("gemini_api_key", DEFAULT_GEMINI_KEY)
         if not gemini_key:
             gemini_key = DEFAULT_GEMINI_KEY

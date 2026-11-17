@@ -1,7 +1,7 @@
 {
   "email": "pawasnishant1327@gmail.com",
   "password": "p7l8PQOI!\\",
-  "check_interval_minutes": 15,
+  "check_interval_minutes": 5,
   "gemini_api_key": "AQ.Ab8RN6KBj3AWE6ny111gstjEQ97RNofqLMEaUTtnGCQJUJUyqg",
   "gemini_models": [
     "gemini-3.1-flash-lite",
