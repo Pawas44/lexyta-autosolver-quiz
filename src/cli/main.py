@@ -232,6 +232,32 @@ def run_cli():
     if args.once:
         scanner.scan(dry_run=args.dry_run)
     else:
+        # Start lightweight HTTP health-check server if deployed on Render/Cloud Web Service
+        if os.getenv("PORT"):
+            from http.server import HTTPServer, BaseHTTPRequestHandler
+            import threading
+
+            class CloudHealthHandler(BaseHTTPRequestHandler):
+                def do_GET(self):
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/plain; charset=utf-8")
+                    self.end_headers()
+                    self.wfile.write(b"OK - Lexyta LMS AutoSolver Daemon is running 24/7!\n")
+
+                def log_message(self, format, *args):
+                    pass
+
+            def run_cloud_health():
+                port = int(os.getenv("PORT", 10000))
+                try:
+                    srv = HTTPServer(("0.0.0.0", port), CloudHealthHandler)
+                    logger.info(f"Health-check HTTP server listening on 0.0.0.0:{port} (Render / Cloud ready)")
+                    srv.serve_forever()
+                except Exception as e:
+                    logger.error(f"Failed to bind health-check HTTP server: {e}")
+
+            threading.Thread(target=run_cloud_health, daemon=True).start()
+
         logger.info(f"Starting continuous daemon loop. Checking every {interval} minutes...")
         while True:
             try:
