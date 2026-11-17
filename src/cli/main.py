@@ -192,17 +192,23 @@ def run_cli():
     parser.add_argument("--config", type=str, default=None, help="Path to custom config.json")
     args = parser.parse_args()
 
+    config = AppConfig.load(args.config)
+    state = StateManager()
+
     if args.setup:
         interactive_setup()
         return
 
-    if not os.path.exists("config/config.json") and not os.path.exists("config.json") and not args.config:
-        print("\n[!] No configuration file found.")
-        interactive_setup()
-        return
-
-    config = AppConfig.load(args.config)
-    state = StateManager()
+    if not config.email or not config.password:
+        import sys
+        if sys.stdin.isatty():
+            print("\n[!] No configuration file found.")
+            interactive_setup()
+            return
+        else:
+            logger.warning("No LMS credentials found (config.json missing and LMS_EMAIL/LMS_PASSWORD not set).")
+            logger.info("In GitHub Actions, add LMS_EMAIL and LMS_PASSWORD to Repository Secrets.")
+            return
 
     if args.test_login:
         test_login(config)
