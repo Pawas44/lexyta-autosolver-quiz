@@ -13,6 +13,7 @@ import requests
 from typing import Dict, Any, Optional, List
 
 from src.core.user_manager import UserManager
+from src.core.access_control import AccessController
 from src.client.lexyta_api import LexytaAPIClient
 from src.core.config import DEFAULT_GEMINI_KEY
 from src.engine.scanner import detect_active_classes, is_overdue
@@ -43,9 +44,10 @@ def format_file_size(size_bytes: int) -> str:
         return f"{size_bytes / (1024 * 1024):.1f} MB"
 
 class TelegramServer:
-    def __init__(self, bot_token: str = None, user_manager: UserManager = None):
+    def __init__(self, bot_token: str = None, user_manager: UserManager = None, access_controller: AccessController = None):
         self.bot_token = (bot_token or os.getenv("MASTER_BOT_TOKEN") or MASTER_BOT_TOKEN).strip()
         self.user_manager = user_manager or UserManager()
+        self.access_controller = access_controller or AccessController()
         self.base_url = f"https://api.telegram.org/bot{self.bot_token}"
         
         self.states: Dict[int, str] = {}
@@ -169,6 +171,28 @@ class TelegramServer:
         from_user = message.get("from", {})
 
         if not chat_id or not text:
+            return
+
+        # -------------------------------------------------------------
+        # ACCESS CONTROL / GITHUB WHITELIST CHECK
+        # -------------------------------------------------------------
+        if text.startswith("/"):
+            cmd_check = text.split()[0].lower()
+            if cmd_check in ["/id", "/myid", "/chatid"]:
+                self.send_message(chat_id, f"🆔 <b>Aapka Telegram Chat ID:</b> <code>{chat_id}</code>\n\nIse admin ko bhejein whitelist mein add karwane ke liye.")
+                return
+
+        if not self.access_controller.is_allowed(chat_id):
+            logger.warning(f"Unauthorized access attempt by chat_id: {chat_id} (@{from_user.get('username', 'none')})")
+            denied_msg = (
+                "🔒 <b>Access Restricted / Whitelist Required</b>\n\n"
+                "Aapka Telegram Chat ID is bot ki authorized users list mein approved nahi hai.\n\n"
+                f"🆔 <b>Aapka Chat ID:</b> <code>{chat_id}</code>\n"
+                f"👤 <b>Username:</b> @{from_user.get('username') or 'N/A'}\n\n"
+                "📌 <b>Kaise Judhein:</b>\n"
+                "Yeh Chat ID admin ko bhejein taaki wo aapko GitHub whitelist (<code>allowed_chats.txt</code>) mein add kar sakein."
+            )
+            self.send_message(chat_id, denied_msg)
             return
 
         current_state = self.states.get(chat_id, STATE_IDLE)

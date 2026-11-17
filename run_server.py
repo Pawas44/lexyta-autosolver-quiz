@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 from src.core.logger import setup_logger
 from src.core.user_manager import UserManager
+from src.core.access_control import AccessController
 from src.bot.telegram_server import TelegramServer, MASTER_BOT_TOKEN
 from src.engine.multi_scanner import MultiScanner
 
@@ -104,8 +105,9 @@ def main():
             logger.warning(f"Could not parse local config.json: {e}")
 
     token = os.getenv("MASTER_BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN") or cfg_bot_token or MASTER_BOT_TOKEN
-    scanner = MultiScanner(user_manager=user_manager, bot_token=token)
-    bot_server = TelegramServer(bot_token=token, user_manager=user_manager)
+    access_controller = AccessController()
+    scanner = MultiScanner(user_manager=user_manager, bot_token=token, access_controller=access_controller)
+    bot_server = TelegramServer(bot_token=token, user_manager=user_manager, access_controller=access_controller)
 
     # Attach on-demand scan callback to bot for /scan command
     def on_demand_scan(chat_id: int):

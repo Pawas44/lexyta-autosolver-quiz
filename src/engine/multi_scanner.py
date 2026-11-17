@@ -8,6 +8,7 @@ import logging
 from typing import Dict, Any, Optional
 
 from src.core.user_manager import UserManager
+from src.core.access_control import AccessController
 from src.client.lexyta_api import LexytaAPIClient
 from src.solvers.gemini_solver import GeminiQuizSolver
 from src.notifiers.telegram import TelegramNotifier, format_quiz_progress_msg, format_quiz_submitted_msg
@@ -18,9 +19,10 @@ from src.core.config import DEFAULT_GEMINI_KEY
 logger = logging.getLogger("MultiScanner")
 
 class MultiScanner:
-    def __init__(self, user_manager: UserManager, bot_token: str):
+    def __init__(self, user_manager: UserManager, bot_token: str, access_controller: Optional[AccessController] = None):
         self.user_manager = user_manager
         self.bot_token = bot_token
+        self.access_controller = access_controller
 
     def scan_user(self, user: Dict[str, Any], dry_run: bool = False) -> Dict[str, int]:
         """Scans LMS for a single student."""
@@ -200,6 +202,10 @@ class MultiScanner:
         logger.info(f"Starting multi-user scan for {len(users)} registered students...")
 
         for u in users:
+            cid = u.get("chat_id")
+            if self.access_controller and not self.access_controller.is_allowed(cid):
+                logger.info(f"Skipping student {u.get('email')} (chat_id {cid} is not in allowed list)")
+                continue
             try:
                 self.scan_user(u, dry_run=dry_run)
             except Exception as e:
