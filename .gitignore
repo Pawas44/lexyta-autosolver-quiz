@@ -28,3 +28,6 @@ env/
 # OS generated files
 .DS_Store
 Thumbs.db
+
+# Export directory
+public_export/
