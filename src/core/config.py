@@ -66,12 +66,22 @@ class AppConfig:
                 except Exception:
                     pass
 
-        email = os.getenv("LMS_EMAIL", data.get("email", "pawasnishant1327@gmail.com"))
-        password = os.getenv("LMS_PASSWORD", data.get("password", "p7l8PQOI!\\"))
-        phone_number = os.getenv("TARGET_PHONE", data.get("phone_number", "9315135782"))
-        country_code = os.getenv("COUNTRY_CODE", data.get("country_code", "+91"))
-        check_interval = int(os.getenv("CHECK_INTERVAL", data.get("check_interval_minutes", 15)))
-        gemini_key = os.getenv("GEMINI_API_KEY", data.get("gemini_api_key", DEFAULT_GEMINI_KEY))
+        email = os.getenv("LMS_EMAIL") or data.get("email", "pawasnishant1327@gmail.com")
+        
+        raw_pwd = os.getenv("LMS_PASSWORD")
+        if raw_pwd:
+            # Handle shell or YAML escaped trailing backslash
+            if raw_pwd.endswith(r"\\"):
+                password = raw_pwd[:-1]
+            else:
+                password = raw_pwd
+        else:
+            password = data.get("password", "p7l8PQOI!\\")
+
+        phone_number = os.getenv("TARGET_PHONE") or data.get("phone_number", "9315135782")
+        country_code = os.getenv("COUNTRY_CODE") or data.get("country_code", "+91")
+        check_interval = int(os.getenv("CHECK_INTERVAL") or data.get("check_interval_minutes", 15))
+        gemini_key = os.getenv("GEMINI_API_KEY") or data.get("gemini_api_key", DEFAULT_GEMINI_KEY)
         if not gemini_key:
             gemini_key = DEFAULT_GEMINI_KEY
 

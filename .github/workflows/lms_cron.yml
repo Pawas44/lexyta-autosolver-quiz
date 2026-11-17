@@ -29,12 +29,12 @@ jobs:
 
       - name: Run LMS Scanner
         env:
-          LMS_EMAIL: ${{ secrets.LMS_EMAIL || 'pawasnishant1327@gmail.com' }}
-          LMS_PASSWORD: ${{ secrets.LMS_PASSWORD || 'p7l8PQOI!\\' }}
-          TARGET_PHONE: ${{ secrets.TARGET_PHONE || '9315135782' }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || 'AQ.Ab8RN6KBj3AWE6ny111gstjEQ97RNofqLMEaUTtnGCQJUJUyqg' }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN || '9029165430:AAHDFq9dIBa_GzpBUzokzsPaX-tBWZDMwcw' }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID || '8224782152' }}
+          LMS_EMAIL: ${{ secrets.LMS_EMAIL }}
+          LMS_PASSWORD: ${{ secrets.LMS_PASSWORD }}
+          TARGET_PHONE: ${{ secrets.TARGET_PHONE }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           python run.py --once
 
