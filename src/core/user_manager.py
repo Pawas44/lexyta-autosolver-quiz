@@ -1,28 +1,47 @@
 """
 Multi-User Registration & Storage Manager
-Persists student credentials, settings, and scan states in data/users.json
+Persists student credentials, settings, and scan states.
+Primary: GitHub cloud sync (survives Render restarts)
+Fallback: local data/users.json
 """
 
 import os
 import json
 import logging
+import threading
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 
+from src.core.github_sync import GitHubStateSync
+
 logger = logging.getLogger("UserManager")
+
 
 class UserManager:
     def __init__(self, file_path: str = "data/users.json"):
         self.file_path = file_path
         self._ensure_dir()
-        self.users: Dict[str, Dict[str, Any]] = self._load()
+        self._lock = threading.Lock()
+        self._github = GitHubStateSync()
+        self._save_counter = 0  # Batch GitHub writes (every 3 local saves)
+
+        # Load: try GitHub first, then local fallback
+        cloud_state = self._github.fetch_state()
+        if cloud_state and cloud_state.get("users"):
+            self.users: Dict[str, Dict[str, Any]] = cloud_state["users"]
+            logger.info(f"Loaded {len(self.users)} users from GitHub cloud state.")
+            # Also update local file as cache
+            self._save_local()
+        else:
+            self.users = self._load_local()
+            logger.info(f"Loaded {len(self.users)} users from local file.")
 
     def _ensure_dir(self):
         dir_name = os.path.dirname(self.file_path)
         if dir_name:
             os.makedirs(dir_name, exist_ok=True)
 
-    def _load(self) -> Dict[str, Dict[str, Any]]:
+    def _load_local(self) -> Dict[str, Dict[str, Any]]:
         if os.path.exists(self.file_path):
             try:
                 with open(self.file_path, "r", encoding="utf-8") as f:
@@ -31,7 +50,8 @@ class UserManager:
                 logger.error(f"Error loading users file: {e}")
         return {}
 
-    def save(self):
+    def _save_local(self):
+        """Save to local file (fast, every time)."""
         self._ensure_dir()
         temp_file = f"{self.file_path}.tmp"
         try:
@@ -40,6 +60,29 @@ class UserManager:
             os.replace(temp_file, self.file_path)
         except Exception as e:
             logger.error(f"Error saving users file: {e}")
+
+    def save(self):
+        """Save locally always, sync to GitHub every 3 saves (batched)."""
+        with self._lock:
+            self._save_local()
+            self._save_counter += 1
+            if self._save_counter >= 3:
+                self._save_counter = 0
+                self._sync_to_github()
+
+    def force_sync(self):
+        """Force immediate sync to GitHub (call after important changes like new user)."""
+        with self._lock:
+            self._save_local()
+            self._sync_to_github()
+
+    def _sync_to_github(self):
+        """Push current state to GitHub."""
+        try:
+            cloud_state = {"users": self.users, "synced_at": datetime.now(timezone.utc).isoformat()}
+            self._github.save_state(cloud_state)
+        except Exception as e:
+            logger.error(f"GitHub sync failed: {e}")
 
     def get_user(self, chat_id: Any) -> Optional[Dict[str, Any]]:
         return self.users.get(str(chat_id))
@@ -60,7 +103,8 @@ class UserManager:
 
     def register_or_update_user(self, chat_id: Any, data: Dict[str, Any]):
         cid = str(chat_id)
-        if cid not in self.users:
+        is_new = cid not in self.users
+        if is_new:
             self.users[cid] = {
                 "chat_id": int(cid),
                 "registered_at": datetime.now(timezone.utc).isoformat(),
@@ -72,7 +116,11 @@ class UserManager:
         
         self.users[cid].update(data)
         self.users[cid]["updated_at"] = datetime.now(timezone.utc).isoformat()
-        self.save()
+        # Force GitHub sync for new registrations, normal save for updates
+        if is_new:
+            self.force_sync()
+        else:
+            self.save()
 
     def set_user_active(self, chat_id: Any, is_active: bool) -> bool:
         cid = str(chat_id)
