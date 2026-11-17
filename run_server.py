@@ -12,6 +12,7 @@ import time
 import json
 import threading
 import logging
+import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
@@ -47,6 +48,20 @@ def start_health_check_server():
     except Exception as e:
         logger.error(f"Failed to bind health-check HTTP server on port {port}: {e}")
 
+def keep_alive_ping_loop():
+    """Periodically pings the public web URL every 10 minutes to prevent Render free-tier sleep."""
+    ext_url = os.getenv("RENDER_EXTERNAL_URL") or "https://lexyta-autosolver-quiz.onrender.com"
+    logger.info(f"Keep-alive self-pinger initialized for: {ext_url}")
+    # Wait 2 minutes after startup before first ping
+    time.sleep(120)
+    while True:
+        try:
+            r = requests.get(ext_url, timeout=20)
+            logger.info(f"Keep-alive ping to {ext_url} -> Status {r.status_code}")
+        except Exception as e:
+            logger.warning(f"Keep-alive ping error: {e}")
+        time.sleep(10 * 60)
+
 def background_scanner_loop(scanner: MultiScanner):
     """Background daemon thread scanning all registered students periodically."""
     logger.info(f"Background multi-user scanner started. Interval: {CHECK_INTERVAL_MINUTES} minutes.")
@@ -67,6 +82,10 @@ def main():
     # 1. Start HTTP health-check server for Render port detection
     http_thread = threading.Thread(target=start_health_check_server, daemon=True)
     http_thread.start()
+
+    # 2. Start keep-alive self-ping thread to prevent Render sleep
+    ping_thread = threading.Thread(target=keep_alive_ping_loop, daemon=True)
+    ping_thread.start()
 
     user_manager = UserManager("data/users.json")
 
