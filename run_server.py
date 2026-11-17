@@ -44,22 +44,22 @@ def main():
     token = os.getenv("MASTER_BOT_TOKEN") or MASTER_BOT_TOKEN
     user_manager = UserManager("data/users.json")
 
-    # Pre-seed Pawas's account if not present
-    if not user_manager.get_user(8224782152):
-        logger.info("Pre-seeding Pawas Pant account (8224782152)...")
-        user_manager.register_or_update_user(8224782152, {
-            "chat_id": 8224782152,
-            "username": "prime3220",
-            "first_name": "Prime",
-            "email": "pawasnishant1327@gmail.com",
-            "password": "p7l8PQOI!\\",
-            "student_name": "Pawas Pant",
-            "program_id": "f6e9d57e-9cdb-4019-90c7-cd026f1c486e",
-            "program_name": "BCA_IP_2025-2029",
-            "gemini_api_key": "AQ.Ab8RN6KBj3AWE6ny111gstjEQ97RNofqLMEaUTtnGCQJUJUyqg",
-            "semester_filter": "auto",
-            "is_active": True
-        })
+    # Automatically load local config if present
+    from src.core.config import AppConfig
+    local_cfg = AppConfig.load()
+    if local_cfg.email and local_cfg.password:
+        tg_cfg = local_cfg.notifications.get("telegram", {})
+        cid = tg_cfg.get("chat_id")
+        if cid and not user_manager.get_user(cid):
+            logger.info(f"Pre-seeding admin account ({local_cfg.email})...")
+            user_manager.register_or_update_user(cid, {
+                "chat_id": int(cid),
+                "email": local_cfg.email,
+                "password": local_cfg.password,
+                "gemini_api_key": local_cfg.gemini_api_key,
+                "semester_filter": local_cfg.active_semester_filter,
+                "is_active": True
+            })
 
     scanner = MultiScanner(user_manager=user_manager, bot_token=token)
     bot_server = TelegramServer(bot_token=token, user_manager=user_manager)
