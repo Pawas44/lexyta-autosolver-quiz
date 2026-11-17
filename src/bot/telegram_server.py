@@ -82,27 +82,8 @@ class TelegramServer:
         if text.startswith("/"):
             cmd = text.split()[0].lower()
 
-            if cmd == "/start":
-                existing = self.user_manager.get_user(chat_id)
-                if existing and existing.get("email"):
-                    msg = (
-                        f"👋 Hello <b>{existing.get('student_name', 'Student')}</b>!\n\n"
-                        f"Aapka Lexyta LMS account already linked hai:\n"
-                        f"📧 <b>Email:</b> {existing.get('email')}\n"
-                        f"🎓 <b>Program:</b> {existing.get('program_name')}\n"
-                        f"⚡ <b>Status:</b> {'🟢 Active' if existing.get('is_active', True) else '🔴 Paused'}\n\n"
-                        f"Commands:\n"
-                        f"/status - Check monitoring status\n"
-                        f"/scan - Trigger instant scan\n"
-                        f"/pause - Pause monitoring\n"
-                        f"/resume - Resume monitoring\n"
-                        f"/unlink - Remove your account"
-                    )
-                    self.send_message(chat_id, msg)
-                    self.states[chat_id] = STATE_IDLE
-                    return
-
-                # New onboarding
+            if cmd in ["/start", "/setup", "/relink"]:
+                # Always start fresh onboarding asking for email
                 self.states[chat_id] = STATE_WAITING_EMAIL
                 self.drafts[chat_id] = {
                     "chat_id": chat_id,

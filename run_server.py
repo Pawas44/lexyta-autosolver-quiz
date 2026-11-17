@@ -43,24 +43,6 @@ def main():
 
     token = os.getenv("MASTER_BOT_TOKEN") or MASTER_BOT_TOKEN
     user_manager = UserManager("data/users.json")
-
-    # Automatically load local config if present
-    from src.core.config import AppConfig
-    local_cfg = AppConfig.load()
-    if local_cfg.email and local_cfg.password:
-        tg_cfg = local_cfg.notifications.get("telegram", {})
-        cid = tg_cfg.get("chat_id")
-        if cid and not user_manager.get_user(cid):
-            logger.info(f"Pre-seeding admin account ({local_cfg.email})...")
-            user_manager.register_or_update_user(cid, {
-                "chat_id": int(cid),
-                "email": local_cfg.email,
-                "password": local_cfg.password,
-                "gemini_api_key": local_cfg.gemini_api_key,
-                "semester_filter": local_cfg.active_semester_filter,
-                "is_active": True
-            })
-
     scanner = MultiScanner(user_manager=user_manager, bot_token=token)
     bot_server = TelegramServer(bot_token=token, user_manager=user_manager)
 
