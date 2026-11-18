@@ -89,12 +89,12 @@ If you are writing a quiz in class where a teacher is watching or LMS proctoring
 │ 🛡️ Lexyta Shield Pro     │ 🎯 Lexyta Study Helper      │
 │ (lexyta-shield-pro.user) │ (lexyta-study-helper.user)  │
 ├──────────────────────────┼─────────────────────────────┤
-│ • Tab switch blocked     │ • Press Ctrl+Shift+S        │
-│ • Mouse leave blocked    │ • AI analyzes questions     │
-│ • Fullscreen enforced    │ • Subtle border highlight   │
-│ • Clipboard monitoring ❌│ • Reasoning on hover        │
-│ • DevTools detection ❌  │ • Ctrl+Shift+A auto-click   │
-│ • Socket.IO proctoring ❌│ • Invisible to teachers     │
+│ • Tab switch: Blocked    │ • Press Ctrl+Shift+S        │
+│ • Mouse leave: Blocked   │ • AI analyzes questions     │
+│ • Fullscreen: Enforced   │ • Subtle border highlight   │
+│ • Clipboard: Safe (OFF)  │ • Reasoning on hover        │
+│ • DevTools: Undetected   │ • Ctrl+Shift+A auto-click   │
+│ • Socket.IO: Neutralized │ • Invisible to teachers     │
 └──────────────────────────┴─────────────────────────────┘
 ```
 
