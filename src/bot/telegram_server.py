@@ -24,7 +24,7 @@ from src.notifiers.telegram import format_quiz_progress_msg, format_quiz_submitt
 
 logger = logging.getLogger("TelegramServer")
 
-MASTER_BOT_TOKEN = "9266694753:AAG3ipGnDEhZQqDNz0MQJd2n2yHRoYrQ9Mk"
+MASTER_BOT_TOKEN = os.getenv("MASTER_BOT_TOKEN", "")
 
 # Conversation State Enums
 STATE_IDLE = "IDLE"
