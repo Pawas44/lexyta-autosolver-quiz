@@ -60,12 +60,26 @@ class GitHubStateSync:
             logger.error(f"Failed to fetch cloud state: {e}")
             return {}
 
+    def _get_latest_sha(self) -> Optional[str]:
+        """Fetch the current file SHA from GitHub if file exists."""
+        try:
+            resp = requests.get(self._api_base, headers=self._headers, timeout=10)
+            if resp.status_code == 200:
+                self._sha = resp.json().get("sha")
+                return self._sha
+        except Exception as e:
+            logger.warning(f"Failed to fetch file SHA: {e}")
+        return None
+
     def save_state(self, state: Dict[str, Any], message: str = "chore: sync bot state [skip ci]") -> bool:
-        """Push updated state to GitHub."""
+        """Push updated state to GitHub with automatic SHA refresh and retry."""
         if not self.token:
             return False
 
         try:
+            if not self._sha:
+                self._get_latest_sha()
+
             content_bytes = json.dumps(state, indent=2).encode("utf-8")
             content_b64 = base64.b64encode(content_bytes).decode("utf-8")
 
@@ -78,6 +92,15 @@ class GitHubStateSync:
                 payload["sha"] = self._sha
 
             resp = requests.put(self._api_base, headers=self._headers, json=payload, timeout=20)
+            
+            # Handle SHA conflict (file was modified elsewhere)
+            if resp.status_code in [409, 422]:
+                logger.info("GitHub SHA conflict detected. Refreshing SHA and retrying...")
+                fresh_sha = self._get_latest_sha()
+                if fresh_sha:
+                    payload["sha"] = fresh_sha
+                    resp = requests.put(self._api_base, headers=self._headers, json=payload, timeout=20)
+
             if resp.status_code in [200, 201]:
                 self._sha = resp.json().get("content", {}).get("sha")
                 logger.info("Cloud state saved to GitHub successfully.")
