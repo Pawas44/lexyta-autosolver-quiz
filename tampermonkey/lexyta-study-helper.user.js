@@ -3,7 +3,7 @@
 // @namespace    https://lms.lexyta.com
 // @version      2.0
 // @description  AI-powered quiz answer highlighter for Lexyta LMS — Ctrl+Shift+S to solve
-// @author       LexytaBot
+// @author       Pawas
 // @match        https://lms.lexyta.com/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue

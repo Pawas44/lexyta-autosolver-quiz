@@ -3,7 +3,7 @@
 // @namespace    https://lms.lexyta.com
 // @version      3.0
 // @description  Complete proctoring neutralizer — reverse-engineered from Lexyta's main-RCXULGX4.js production bundle (68 proctoring hooks, Socket.IO heartbeat, flush pipeline)
-// @author       LexytaBot
+// @author       Pawas
 // @match        https://lms.lexyta.com/*
 // @grant        none
 // @run-at       document-start
