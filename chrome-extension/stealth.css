@@ -1,0 +1,87 @@
+/* Stealth highlights for Lexyta options */
+.sh-correct {
+  border-left: 3.5px solid rgba(66, 133, 244, 0.75) !important;
+  background-color: rgba(66, 133, 244, 0.08) !important;
+  border-radius: 4px !important;
+  transition: all 0.3s ease !important;
+}
+
+.sh-correct-bold {
+  border-left: 4px solid #2ecc71 !important;
+  background-color: rgba(46, 204, 113, 0.12) !important;
+  border-radius: 4px !important;
+  box-shadow: 0 0 6px rgba(46, 204, 113, 0.25) !important;
+  transition: all 0.3s ease !important;
+}
+
+/* Toast notifications */
+.sh-toast-ext {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-70px);
+  background: rgba(30, 30, 46, 0.98);
+  color: #cdd6f4;
+  padding: 10px 20px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  z-index: 2147483647 !important;
+  pointer-events: none;
+  opacity: 0;
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  text-align: center;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.55);
+  white-space: nowrap;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.sh-toast-ext.visible {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+}
+
+/* Floating Corner Action Dot */
+.sh-ext-dot {
+  position: fixed;
+  bottom: 85px;
+  right: 18px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #1e1e2e;
+  border: 2px solid #89b4fa;
+  color: #89b4fa;
+  z-index: 2147483647 !important;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.45);
+  user-select: none;
+  transition: transform 0.2s ease, background 0.25s ease;
+}
+
+.sh-ext-dot:active {
+  transform: scale(1.25);
+}
+
+.sh-ext-dot.solving {
+  background: #332711 !important;
+  border-color: #fbbc04 !important;
+  color: #fbbc04 !important;
+  animation: sh-ext-pulse 1s ease-in-out infinite;
+}
+
+.sh-ext-dot.done {
+  background: #14281d !important;
+  border-color: #2ecc71 !important;
+  color: #2ecc71 !important;
+}
+
+@keyframes sh-ext-pulse {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
