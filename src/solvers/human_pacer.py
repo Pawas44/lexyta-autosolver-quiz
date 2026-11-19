@@ -34,13 +34,20 @@ def calculate_target_duration_seconds(time_limit_minutes: Optional[int], total_q
         elif time_limit_minutes <= 45:
             ratio = random.uniform(0.50, 0.60)  # ~20-24 min for 40 min
             target = (time_limit_minutes * 60) * ratio
+        elif time_limit_minutes <= 65:
+            ratio = random.uniform(0.48, 0.58)  # ~28-35 min for 60 min
+            target = (time_limit_minutes * 60) * ratio
+        elif time_limit_minutes <= 95:
+            ratio = random.uniform(0.45, 0.55)  # ~40-50 min for 90 min
+            target = (time_limit_minutes * 60) * ratio
         else:
-            # 60-90 min exams: ~25 to 35 minutes
-            target = random.uniform(25 * 60, 35 * 60)
+            # 90-180 min grand exam / final quiz (e.g. 100 questions)
+            ratio = random.uniform(0.45, 0.55)  # ~54-66 min for 120 min
+            target = (time_limit_minutes * 60) * ratio
     else:
-        # Default when no time limit set: 30-45 seconds per question
+        # Default when no time limit set: 25-35 seconds per question
         q_count = max(total_questions, 5)
-        target = q_count * random.uniform(30.0, 45.0)
+        target = q_count * random.uniform(25.0, 36.0)
 
     # DEADLINE SAFETY CHECK:
     # If the assignment expires sooner than our target, cap target to avoid missing the deadline!

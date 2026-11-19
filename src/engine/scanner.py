@@ -52,17 +52,27 @@ def detect_active_classes(classes: List[Dict[str, Any]], active_filter: str) -> 
         return classes
 
     # AUTO: Parse semester numbers from subject codes (e.g. BCA1, BCA2, BCA3...)
+    # Guaranteed Grand Quiz Discovery: Never exclude any class with special assessment keywords
+    GRAND_KEYWORDS = ["grand", "quiz", "exam", "test", "assessment", "special", "mock", "final", "comp", "eval"]
+
     sem_data = []
     other_classes = []
     for cls in classes:
         name = cls.get("name", "")
-        match = re.search(r'([a-zA-Z]+)(\d+)', name)
+        name_lower = name.lower()
+
+        # If class name has grand quiz / assessment keywords, ALWAYS include!
+        if any(kw in name_lower for kw in GRAND_KEYWORDS):
+            other_classes.append(cls)
+            continue
+
+        match = re.search(r'([a-zA-Z]+)\s*([1-8])(?!\d)', name)
         if match:
             prefix = match.group(1).upper()
             sem_num = int(match.group(2))
             sem_data.append((prefix, sem_num, cls))
         else:
-            # Non-standard or special classes (e.g. "Grand Quiz", "Common Assessment", "Value Added")
+            # Classes without standard sem codes (e.g. "Value Added", "General", "Projects")
             other_classes.append(cls)
 
     if sem_data:
@@ -75,11 +85,14 @@ def detect_active_classes(classes: List[Dict[str, Any]], active_filter: str) -> 
             cls for prefix, num, cls in sem_data
             if num == max_sem_by_prefix.get(prefix)
         ]
-        # Always retain special/common classes alongside current active semester
-        auto_classes.extend(other_classes)
+        # Always retain special/common/grand quiz classes alongside current active semester
+        for c in other_classes:
+            if c not in auto_classes:
+                auto_classes.append(c)
+
         if auto_classes:
             detected_tags = [f"{p}{max_sem_by_prefix[p]}" for p in max_sem_by_prefix]
-            logger.info(f"Auto-detected current active semester: {', '.join(detected_tags)} ({len(auto_classes)} subjects)")
+            logger.info(f"Auto-detected current active semester: {', '.join(detected_tags)} + {len(other_classes)} special/grand classes ({len(auto_classes)} total)")
             return auto_classes
 
     return classes

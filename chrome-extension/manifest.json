@@ -4,16 +4,25 @@
   "author": "Pawas",
   "description": "Academic study assistant",
   "version": "1.0.0",
-  "permissions": ["activeTab", "storage"],
+  "permissions": [
+    "activeTab",
+    "storage"
+  ],
   "host_permissions": [
     "https://lms.lexyta.com/*",
     "https://generativelanguage.googleapis.com/*"
   ],
   "content_scripts": [
     {
-      "matches": ["https://lms.lexyta.com/*"],
-      "js": ["content.js"],
-      "css": ["stealth.css"],
+      "matches": [
+        "https://lms.lexyta.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "stealth.css"
+      ],
       "run_at": "document_idle"
     }
   ],
@@ -34,4 +43,3 @@
     "128": "icons/icon128.png"
   }
 }
-

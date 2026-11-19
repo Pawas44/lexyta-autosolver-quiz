@@ -407,15 +407,45 @@
 
   // ═══════════════════════════════════════════════
   //  GEMINI API CALLER (via GM_xmlhttpRequest — bypasses CORS)
+  //  Supports up to 100+ questions via Smart Batching
   // ═══════════════════════════════════════════════
 
-  function callGemini(questionsData) {
-    return new Promise((resolve, reject) => {
-      if (!GEMINI_KEY) {
-        reject(new Error("API Key not set. Right-click Tampermonkey icon → Set Gemini API Key"));
-        return;
+  async function callGemini(questionsData) {
+    if (!GEMINI_KEY) {
+      throw new Error("API Key not set. Right-click Tampermonkey icon → Set Gemini API Key");
+    }
+
+    // Small quiz (<= 10 questions): single fast prompt
+    if (questionsData.length <= 10) {
+      return callGeminiBatch(questionsData);
+    }
+
+    // Grand Quiz (up to 100+ questions): solve in batches of 8 with live progress
+    const CHUNK_SIZE = 8;
+    const allAnswers = {};
+    const totalChunks = Math.ceil(questionsData.length / CHUNK_SIZE);
+
+    for (let i = 0; i < questionsData.length; i += CHUNK_SIZE) {
+      const chunk = questionsData.slice(i, i + CHUNK_SIZE);
+      const chunkNum = Math.floor(i / CHUNK_SIZE) + 1;
+      showToast(`🧠 Solving batch ${chunkNum}/${totalChunks} (Q${i + 1}–Q${Math.min(i + CHUNK_SIZE, questionsData.length)})...`);
+
+      try {
+        const batchAnswers = await callGeminiBatch(chunk);
+        Object.assign(allAnswers, batchAnswers);
+      } catch (err) {
+        console.warn(`[StudyHelper] Batch ${chunkNum} error:`, err);
       }
 
+      if (i + CHUNK_SIZE < questionsData.length) {
+        await sleep(300);
+      }
+    }
+    return allAnswers;
+  }
+
+  function callGeminiBatch(questionsData) {
+    return new Promise((resolve, reject) => {
       let questionsPrompt = "";
       for (let i = 0; i < questionsData.length; i++) {
         const q = questionsData[i];

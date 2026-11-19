@@ -106,8 +106,8 @@ class GeminiQuizSolver(BaseQuizSolver):
             except Exception:
                 pass
 
-        # Process in chunks of 5 questions to maximize academic reasoning accuracy
-        CHUNK_SIZE = 5
+        # Smart dynamic batching: 5 for small quizzes, 8 for grand exams (50-100 questions)
+        CHUNK_SIZE = 8 if total >= 30 else 5
         for i in range(0, total, CHUNK_SIZE):
             chunk = all_questions[i:i + CHUNK_SIZE]
             chunk_num = (i // CHUNK_SIZE) + 1
@@ -122,6 +122,10 @@ class GeminiQuizSolver(BaseQuizSolver):
                     on_progress(len(payload), total, f"Batch {chunk_num}/{total_chunks} verified ({len(payload)}/{total} answered)")
                 except Exception:
                     pass
+
+            # Safe spacing between batches to prevent API rate limits
+            if i + CHUNK_SIZE < total:
+                time.sleep(0.3)
 
         if on_progress:
             try:

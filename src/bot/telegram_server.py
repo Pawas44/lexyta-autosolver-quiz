@@ -472,7 +472,9 @@ class TelegramServer:
                 for cls in active_classes:
                     items = client.get_class_assignments(cls["id"]) or []
                     for item in items:
-                        if item.get("type") == "QUIZ":
+                        is_quiz = (item.get("type") in ["QUIZ", "EXAM", "TEST", "ASSESSMENT", "ONLINE_QUIZ"]) or \
+                                  (any(w in item.get("name", "").lower() for w in ["quiz", "grand"]) and item.get("type") not in ["DOCUMENT", "HOMEWORK"])
+                        if is_quiz:
                             latest = item.get("latest_attempt")
                             status = latest.get("status") if latest else "NOT_ATTEMPTED"
                             due = item.get("due_date")
@@ -549,7 +551,9 @@ class TelegramServer:
                     items = client.get_class_assignments(class_id) or []
 
                     for item in items:
-                        if item.get("type") == "QUIZ":
+                        is_quiz = (item.get("type") in ["QUIZ", "EXAM", "TEST", "ASSESSMENT", "ONLINE_QUIZ"]) or \
+                                  (any(w in item.get("name", "").lower() for w in ["quiz", "grand"]) and item.get("type") not in ["DOCUMENT", "HOMEWORK"])
+                        if is_quiz:
                             item_id = item["id"]
                             item_name = item.get("name", "Quiz")
                             latest = item.get("latest_attempt")

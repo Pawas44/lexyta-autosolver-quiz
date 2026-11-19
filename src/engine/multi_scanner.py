@@ -105,8 +105,11 @@ class MultiScanner:
                                     notifier.send(grade_msg)
                                     self.user_manager.mark_grade_notified(chat_id, item_id)
 
-                    # 2. QUIZ WORKFLOW
-                    if item_type == "QUIZ":
+                    # 2. QUIZ / GRAND QUIZ WORKFLOW
+                    is_quiz = (item_type in ["QUIZ", "EXAM", "TEST", "ASSESSMENT", "ONLINE_QUIZ"]) or \
+                              (any(w in item_name.lower() for w in ["quiz", "grand"]) and item_type not in ["DOCUMENT", "HOMEWORK"])
+
+                    if is_quiz:
                         if status in ["COMPLETED", "GRADED"]:
                             continue
                         if self.user_manager.is_quiz_solved(chat_id, item_id):
