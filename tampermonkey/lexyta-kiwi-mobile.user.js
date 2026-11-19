@@ -36,6 +36,18 @@
     Object.defineProperty(navigator, "webdriver", { get: () => false, configurable: true });
   } catch (e) {}
 
+  // Screen WakeLock — Keeps phone screen bright and awake so it never sleeps or locks in class
+  try {
+    if ("wakeLock" in navigator) {
+      navigator.wakeLock.request("screen").catch(() => {});
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") {
+          navigator.wakeLock.request("screen").catch(() => {});
+        }
+      });
+    }
+  } catch (e) {}
+
   // ═══════════════════════════════════════════════════════════════════
   //  LAYER 2: STEALTH PROCTORING BYPASS (Anti-Tamper-Proof)
   // ═══════════════════════════════════════════════════════════════════
