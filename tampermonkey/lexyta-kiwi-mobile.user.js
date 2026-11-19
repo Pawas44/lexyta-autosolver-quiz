@@ -1,10 +1,12 @@
 // ==UserScript==
 // @name         Lexyta Kiwi Mobile Master
 // @namespace    https://lms.lexyta.com
-// @version      4.1
-// @description  All-in-One Kiwi Mobile Fix: Desktop Environment Spoof + Complete Proctoring Neutralizer + AI Solver with Auto-Click ON/OFF Toggle
+// @version      4.2
+// @description  All-in-One Kiwi Mobile Fix: Desktop Environment Spoof + Complete Proctoring Neutralizer + AI Solver with Auto-Click ON/OFF Toggle + Draggable Floating UI
 // @author       Pawas
 // @match        https://lms.lexyta.com/*
+// @match        http://lms.lexyta.com/*
+// @match        https://*.lexyta.com/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -84,7 +86,7 @@
     return _origFetch.apply(this, arguments);
   };
 
-  console.log("🛡️ [Kiwi Master] Desktop spoof & anti-proctoring armed.");
+  console.log("🛡️ [Kiwi Master v4.2] Desktop spoof & anti-proctoring armed.");
 
   // ═══════════════════════════════════════════════════════════════════
   //  LAYER 3: AI QUIZ SOLVER & AUTO-CLICK / HIGHLIGHT MODES
@@ -135,71 +137,85 @@
 
   // Inject Styles
   function injectStyles() {
+    if (document.getElementById("sh-styles-kiwi")) return;
     const style = document.createElement("style");
+    style.id = "sh-styles-kiwi";
     style.textContent = `
       .sh-correct {
-        border-left: 4px solid rgba(66, 133, 244, 0.75) !important;
-        background-color: rgba(66, 133, 244, 0.08) !important;
-        border-radius: 4px !important;
+        border-left: 5px solid #4285f4 !important;
+        background-color: rgba(66, 133, 244, 0.12) !important;
+        border-radius: 6px !important;
+        box-shadow: 0 0 8px rgba(66, 133, 244, 0.2) !important;
         transition: all 0.3s ease !important;
       }
       .sh-indicator-kiwi {
         position: fixed;
-        bottom: 16px;
-        right: 16px;
-        width: 24px;
-        height: 24px;
+        bottom: 85px;
+        right: 18px;
+        width: 42px;
+        height: 42px;
         border-radius: 50%;
-        z-index: 2147483647;
+        z-index: 2147483647 !important;
         cursor: pointer;
-        touch-action: manipulation;
-        transition: all 0.25s ease;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        touch-action: none;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 19px;
+        user-select: none;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5) !important;
+        transition: transform 0.15s ease, background 0.25s ease, border-color 0.25s ease;
       }
       .sh-indicator-kiwi:active {
-        transform: scale(1.35);
+        transform: scale(1.2);
       }
-      /* Highlight Only Mode (Subtle Blue - Auto-Click OFF) */
+      /* Highlight Only Mode (Subtle Blue & 👁️ - Auto-Click OFF) */
       .sh-indicator-kiwi.highlight-mode {
-        background: rgba(137, 180, 250, 0.45);
-        border: 2px solid rgba(137, 180, 250, 0.85);
+        background: #1e1e2e !important;
+        border: 2.5px solid #89b4fa !important;
+        color: #89b4fa !important;
       }
-      /* Auto-Click Mode (Subtle Emerald Green - Auto-Click ON) */
+      /* Auto-Click Mode (Subtle Emerald Green & ⚡ - Auto-Click ON) */
       .sh-indicator-kiwi.autoclick-mode {
-        background: rgba(46, 204, 113, 0.45);
-        border: 2px solid rgba(46, 204, 113, 0.9);
+        background: #14281d !important;
+        border: 2.5px solid #2ecc71 !important;
+        color: #2ecc71 !important;
       }
       .sh-indicator-kiwi.solving {
-        background: rgba(251, 188, 4, 0.8) !important;
-        border-color: #fbbc04 !important;
+        background: #332711 !important;
+        border: 2.5px solid #fbbc04 !important;
+        color: #fbbc04 !important;
         animation: sh-pulse 1s ease-in-out infinite;
       }
       .sh-indicator-kiwi.done {
-        background: rgba(52, 168, 83, 0.85) !important;
-        border-color: #34a853 !important;
+        background: #14281d !important;
+        border: 2.5px solid #2ecc71 !important;
+        color: #2ecc71 !important;
       }
       @keyframes sh-pulse {
-        0%, 100% { opacity: 0.5; transform: scale(1); }
-        50% { opacity: 1; transform: scale(1.2); }
+        0%, 100% { opacity: 0.6; transform: scale(1); }
+        50% { opacity: 1; transform: scale(1.15); }
       }
       .sh-toast-kiwi {
         position: fixed;
-        top: 20px;
+        top: 24px;
         left: 50%;
-        transform: translateX(-50%) translateY(-60px);
-        background: rgba(30, 30, 46, 0.95);
+        transform: translateX(-50%) translateY(-70px);
+        background: rgba(30, 30, 46, 0.98);
         color: #cdd6f4;
-        padding: 9px 18px;
-        border-radius: 10px;
-        font-size: 13px;
+        padding: 10px 20px;
+        border-radius: 12px;
+        font-size: 14px;
+        font-weight: 500;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        z-index: 2147483647;
+        z-index: 2147483647 !important;
         pointer-events: none;
         opacity: 0;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
         text-align: center;
-        box-shadow: 0 4px 16px rgba(0,0,0,0.45);
+        box-shadow: 0 6px 20px rgba(0,0,0,0.55);
         white-space: nowrap;
+        border: 1px solid rgba(255, 255, 255, 0.12);
       }
       .sh-toast-kiwi.visible {
         transform: translateX(-50%) translateY(0);
@@ -210,12 +226,13 @@
   }
 
   function showToast(text) {
+    injectStyles();
     let t = document.getElementById("sh-toast-kiwi");
     if (!t) {
       t = document.createElement("div");
       t.id = "sh-toast-kiwi";
       t.className = "sh-toast-kiwi";
-      document.body.appendChild(t);
+      (document.body || document.documentElement).appendChild(t);
     }
     t.textContent = text;
     t.classList.add("visible");
@@ -227,10 +244,12 @@
     if (!dot || isSolving) return;
     if (AUTO_CLICK) {
       dot.className = "sh-indicator-kiwi autoclick-mode";
-      dot.title = "Mode: Auto-Click ON (Double-tap to turn OFF)";
+      dot.innerHTML = "⚡";
+      dot.title = "Mode: Auto-Click ON (Double-tap to turn OFF | Drag to move)";
     } else {
       dot.className = "sh-indicator-kiwi highlight-mode";
-      dot.title = "Mode: Highlight Only (Double-tap to turn ON Auto-Click)";
+      dot.innerHTML = "👁️";
+      dot.title = "Mode: Highlight Only (Double-tap to turn ON Auto-Click | Drag to move)";
     }
   }
 
@@ -376,7 +395,10 @@
     }
 
     const dot = document.getElementById("sh-indicator-kiwi");
-    if (dot) dot.className = "sh-indicator-kiwi solving";
+    if (dot) {
+      dot.className = "sh-indicator-kiwi solving";
+      dot.innerHTML = "⏳";
+    }
 
     isSolving = true;
     showToast("🔍 Scanning questions on Kiwi...");
@@ -389,7 +411,7 @@
       return;
     }
 
-    const modeName = AUTO_CLICK ? "Auto-Click ON" : "Highlight Only (Auto-Click OFF)";
+    const modeName = AUTO_CLICK ? "Auto-Click ON" : "Highlight Only";
     showToast(`🚀 Found ${questions.length} questions! Mode: ${modeName}...`);
 
     const CHUNK_SIZE = 8;
@@ -449,7 +471,11 @@
       await sleep(AUTO_CLICK ? 400 : 150);
     }
 
-    if (dot) dot.className = "sh-indicator-kiwi done";
+    if (dot) {
+      dot.className = "sh-indicator-kiwi done";
+      dot.innerHTML = "✅";
+    }
+
     if (AUTO_CLICK) {
       showToast(`🎉 Done! ${totalProcessed}/${questions.length} answers selected on screen.`);
     } else {
@@ -459,57 +485,102 @@
     setTimeout(() => {
       isSolving = false;
       updateDotAppearance();
-    }, 2500);
+    }, 2800);
   }
 
   // ═══════════════════════════════════════════════
-  //  FLOATING MOBILE TOUCH DOT (Gesture Controlled)
+  //  DRAGGABLE & GESTURE-CONTROLLED FLOATING DOT
   // ═══════════════════════════════════════════════
   // - Single Tap:  Start Solving (using current mode)
   // - Double Tap:  Toggle Auto-Click ON / OFF
-  // - Long Press:  API Key Dialog / Mode Switch
+  // - Long Press:  API Key Dialog
+  // - Touch Drag:  Freely move the dot anywhere on screen!
 
   function createFloatingDot() {
     if (document.getElementById("sh-indicator-kiwi")) return;
+    if (!document.body) return;
+
+    injectStyles();
+
     const dot = document.createElement("div");
     dot.id = "sh-indicator-kiwi";
     dot.className = AUTO_CLICK ? "sh-indicator-kiwi autoclick-mode" : "sh-indicator-kiwi highlight-mode";
-    dot.title = AUTO_CLICK ? "Mode: Auto-Click ON (Double-tap to turn OFF)" : "Mode: Highlight Only (Double-tap to turn ON Auto-Click)";
+    dot.innerHTML = AUTO_CLICK ? "⚡" : "👁️";
+    dot.title = AUTO_CLICK ? "Mode: Auto-Click ON (Double-tap to turn OFF | Drag to move)" : "Mode: Highlight Only (Double-tap to turn ON Auto-Click | Drag to move)";
+
+    // Restore saved drag position if available
+    const savedTop = GM_getValue("dot_top", null);
+    const savedLeft = GM_getValue("dot_left", null);
+    if (savedTop !== null && savedLeft !== null) {
+      dot.style.bottom = "auto";
+      dot.style.right = "auto";
+      dot.style.top = `${savedTop}px`;
+      dot.style.left = `${savedLeft}px`;
+    }
 
     let tapTimer = null;
     let longPressTimer = null;
     let touchStartTime = 0;
     let touchStartX = 0, touchStartY = 0;
+    let initialRect = null;
+    let hasMoved = false;
     let isLongPress = false;
 
+    // --- TOUCH EVENTS (Mobile) ---
     dot.addEventListener("touchstart", (e) => {
       isLongPress = false;
+      hasMoved = false;
       touchStartTime = Date.now();
       const touch = e.touches[0];
       touchStartX = touch.clientX;
       touchStartY = touch.clientY;
+      initialRect = dot.getBoundingClientRect();
 
       longPressTimer = setTimeout(() => {
-        isLongPress = true;
-        try { if (navigator.vibrate) navigator.vibrate(50); } catch (e) {}
-        const k = prompt("Gemini API Key update karein (cancel to keep):", GEMINI_KEY);
-        if (k !== null && k.trim()) {
-          GEMINI_KEY = k.trim();
-          GM_setValue("gemini_key", GEMINI_KEY);
-          showToast("✅ API Key Saved!");
+        if (!hasMoved) {
+          isLongPress = true;
+          try { if (navigator.vibrate) navigator.vibrate(60); } catch (e) {}
+          const k = prompt("Gemini API Key update karein (cancel to keep):", GEMINI_KEY);
+          if (k !== null && k.trim()) {
+            GEMINI_KEY = k.trim();
+            GM_setValue("gemini_key", GEMINI_KEY);
+            showToast("✅ API Key Saved!");
+          }
         }
       }, 700);
     }, { passive: true });
 
     dot.addEventListener("touchmove", (e) => {
       const touch = e.touches[0];
-      if (Math.abs(touch.clientX - touchStartX) > 10 || Math.abs(touch.clientY - touchStartY) > 10) {
+      const dx = touch.clientX - touchStartX;
+      const dy = touch.clientY - touchStartY;
+
+      if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+        hasMoved = true;
         clearTimeout(longPressTimer);
+        e.preventDefault(); // Prevent page scrolling while dragging dot
+
+        const newLeft = Math.max(8, Math.min(window.innerWidth - 50, initialRect.left + dx));
+        const newTop = Math.max(8, Math.min(window.innerHeight - 50, initialRect.top + dy));
+
+        dot.style.bottom = "auto";
+        dot.style.right = "auto";
+        dot.style.left = `${newLeft}px`;
+        dot.style.top = `${newTop}px`;
       }
-    }, { passive: true });
+    }, { passive: false });
 
     dot.addEventListener("touchend", () => {
       clearTimeout(longPressTimer);
+
+      if (hasMoved) {
+        // Save new position
+        const rect = dot.getBoundingClientRect();
+        GM_setValue("dot_top", Math.round(rect.top));
+        GM_setValue("dot_left", Math.round(rect.left));
+        return;
+      }
+
       if (isLongPress) return;
 
       const duration = Date.now() - touchStartTime;
@@ -529,9 +600,51 @@
       }
     });
 
-    // Desktop mouse fallback
+    // --- MOUSE DRAG & CLICK (Desktop fallback) ---
+    let isMouseDown = false;
+    let mouseStartX = 0, mouseStartY = 0;
+    let mouseMoved = false;
+
+    dot.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      isMouseDown = true;
+      mouseMoved = false;
+      mouseStartX = e.clientX;
+      mouseStartY = e.clientY;
+      initialRect = dot.getBoundingClientRect();
+
+      function onMouseMove(ev) {
+        if (!isMouseDown) return;
+        const dx = ev.clientX - mouseStartX;
+        const dy = ev.clientY - mouseStartY;
+        if (Math.abs(dx) > 6 || Math.abs(dy) > 6) {
+          mouseMoved = true;
+          const newLeft = Math.max(8, Math.min(window.innerWidth - 50, initialRect.left + dx));
+          const newTop = Math.max(8, Math.min(window.innerHeight - 50, initialRect.top + dy));
+          dot.style.bottom = "auto";
+          dot.style.right = "auto";
+          dot.style.left = `${newLeft}px`;
+          dot.style.top = `${newTop}px`;
+        }
+      }
+
+      function onMouseUp() {
+        if (isMouseDown && mouseMoved) {
+          const rect = dot.getBoundingClientRect();
+          GM_setValue("dot_top", Math.round(rect.top));
+          GM_setValue("dot_left", Math.round(rect.left));
+        }
+        isMouseDown = false;
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", onMouseUp);
+      }
+
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
+    });
+
     dot.addEventListener("click", () => {
-      if (Date.now() - touchStartTime < 500) return; // Prevent double-trigger from touch
+      if (mouseMoved || Date.now() - touchStartTime < 500) return;
       startSolving();
     });
 
@@ -539,20 +652,34 @@
       toggleAutoClick();
     });
 
-    (document.body || document.documentElement).appendChild(dot);
+    document.body.appendChild(dot);
   }
 
-  // Init when DOM is ready
-  function init() {
+  // ═══════════════════════════════════════════════
+  //  SPA-RESILIENT PERSISTENT MOUNT
+  // ═══════════════════════════════════════════════
+  // Keeps dot mounted even when Angular navigates or rebuilds DOM
+
+  function ensureMounted() {
+    if (!document.body) return;
     injectStyles();
-    createFloatingDot();
+    const existing = document.getElementById("sh-indicator-kiwi");
+    if (!existing) {
+      createFloatingDot();
+    } else if (!document.body.contains(existing)) {
+      document.body.appendChild(existing);
+    }
   }
 
+  // Run on start and observe DOM
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
+    document.addEventListener("DOMContentLoaded", ensureMounted);
   } else {
-    init();
+    ensureMounted();
   }
 
-  console.log("⚡ [Kiwi Master v4.1] Ready. Single tap dot: Solve. Double tap dot: Toggle Auto-Click ON/OFF.");
+  window.addEventListener("load", ensureMounted);
+  setInterval(ensureMounted, 1200);
+
+  console.log("⚡ [Kiwi Master v4.2] Ready. Draggable floating action button active.");
 })();
