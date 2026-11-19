@@ -130,6 +130,14 @@ class UserManager:
             return True
         return False
 
+    def set_user_autosolve(self, chat_id: Any, auto_solve: bool) -> bool:
+        cid = str(chat_id)
+        if cid in self.users:
+            self.users[cid]["auto_solve"] = auto_solve
+            self.save()
+            return True
+        return False
+
     def delete_user(self, chat_id: Any) -> bool:
         cid = str(chat_id)
         if cid in self.users:
@@ -149,6 +157,19 @@ class UserManager:
                 self.users[cid]["solved_quizzes"] = []
             if quiz_id not in self.users[cid]["solved_quizzes"]:
                 self.users[cid]["solved_quizzes"].append(quiz_id)
+                self.save()
+
+    def is_quiz_notified(self, chat_id: Any, quiz_id: str) -> bool:
+        user = self.get_user(chat_id)
+        return bool(user and quiz_id in user.get("notified_quizzes", []))
+
+    def mark_quiz_notified(self, chat_id: Any, quiz_id: str):
+        cid = str(chat_id)
+        if cid in self.users:
+            if "notified_quizzes" not in self.users[cid]:
+                self.users[cid]["notified_quizzes"] = []
+            if quiz_id not in self.users[cid]["notified_quizzes"]:
+                self.users[cid]["notified_quizzes"].append(quiz_id)
                 self.save()
 
     def is_assignment_notified(self, chat_id: Any, assignment_id: str) -> bool:

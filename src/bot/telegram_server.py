@@ -61,12 +61,15 @@ class TelegramServer:
         """Registers bot commands with Telegram so they appear in the UI Menu button."""
         url = f"{self.base_url}/setMyCommands"
         commands = [
+            {"command": "status", "description": "View account status & toggle controls"},
+            {"command": "stop", "description": "🛑 Stop/Pause 24/7 background bot"},
+            {"command": "resume", "description": "▶️ Resume 24/7 background bot"},
+            {"command": "autosolve", "description": "⚡ Toggle Auto-Solve (ON/OFF)"},
             {"command": "quiz", "description": "Check pending quizzes (kitne rehte hain)"},
             {"command": "solve", "description": "Solve pending quizzes with AI now"},
             {"command": "assignments", "description": "Check open assignments (jo de sakte hain)"},
             {"command": "notes", "description": "Download lecture notes, PPTs & outlines"},
             {"command": "marks", "description": "View released marks & results"},
-            {"command": "status", "description": "View account & 24/7 monitor status"},
             {"command": "scan", "description": "Run instant LMS scan"},
             {"command": "help", "description": "Show all available commands"}
         ]
@@ -99,8 +102,8 @@ class TelegramServer:
             logger.error(f"Error sending document {filename} to {chat_id}: {e}")
             return False
 
-    def send_message(self, chat_id: int, text: str, parse_mode: str = "HTML") -> bool:
-        """Sends message to a Telegram chat safely."""
+    def send_message(self, chat_id: int, text: str, parse_mode: str = "HTML", reply_markup: Optional[Dict[str, Any]] = None) -> bool:
+        """Sends message to a Telegram chat safely, supporting custom inline/reply keyboards."""
         try:
             url = f"{self.base_url}/sendMessage"
             escaped_text = text
@@ -112,6 +115,9 @@ class TelegramServer:
                 "text": escaped_text,
                 "parse_mode": parse_mode
             }
+            if reply_markup:
+                payload["reply_markup"] = reply_markup
+
             resp = requests.post(url, json=payload, timeout=20)
             if resp.status_code == 200:
                 return True
@@ -123,6 +129,30 @@ class TelegramServer:
         except Exception as e:
             logger.error(f"Error sending message to {chat_id}: {e}")
             return False
+
+    def _get_control_keyboard(self, chat_id: int) -> Dict[str, Any]:
+        """Generates an interactive Inline Keyboard with 1-tap Stop/Resume and Auto-Solve controls."""
+        user = self.user_manager.get_user(chat_id) or {}
+        is_active = user.get("is_active", True)
+        auto_solve = user.get("auto_solve", True)
+
+        row1 = []
+        if is_active:
+            row1.append({"text": "🛑 Stop 24/7 Bot", "callback_data": "btn_stop"})
+        else:
+            row1.append({"text": "▶️ Resume 24/7 Bot", "callback_data": "btn_resume"})
+
+        if auto_solve:
+            row1.append({"text": "⚡ Auto-Solve: ON", "callback_data": "btn_autosolve_off"})
+        else:
+            row1.append({"text": "⏸️ Auto-Solve: OFF", "callback_data": "btn_autosolve_on"})
+
+        row2 = [
+            {"text": "🔍 Scan Now", "callback_data": "btn_scan"},
+            {"text": "📝 View Quizzes", "callback_data": "btn_quizzes"}
+        ]
+
+        return {"inline_keyboard": [row1, row2]}
 
     def send_message_get_id(self, chat_id: int, text: str, parse_mode: str = "HTML") -> Optional[int]:
         """Sends message and returns message_id for live progress bar editing."""
@@ -145,8 +175,8 @@ class TelegramServer:
             logger.error(f"Error sending message (get_id) to {chat_id}: {e}")
             return None
 
-    def edit_message(self, chat_id: int, message_id: int, text: str, parse_mode: str = "HTML") -> bool:
-        """Edits an existing message in-place for live real-time progress updates."""
+    def edit_message(self, chat_id: int, message_id: int, text: str, parse_mode: str = "HTML", reply_markup: Optional[Dict[str, Any]] = None) -> bool:
+        """Edits an existing message in-place for live real-time progress updates or keyboard changes."""
         try:
             url = f"{self.base_url}/editMessageText"
             escaped_text = text
@@ -159,11 +189,133 @@ class TelegramServer:
                 "text": escaped_text,
                 "parse_mode": parse_mode
             }
+            if reply_markup is not None:
+                payload["reply_markup"] = reply_markup
             resp = requests.post(url, json=payload, timeout=10)
             return resp.status_code == 200
         except Exception as e:
             logger.warning(f"Could not edit message {message_id}: {e}")
             return False
+
+    def answer_callback_query(self, callback_query_id: str, text: Optional[str] = None, show_alert: bool = False) -> bool:
+        """Acknowledges a callback query from an inline keyboard to dismiss the loading spinner."""
+        try:
+            url = f"{self.base_url}/answerCallbackQuery"
+            payload = {"callback_query_id": callback_query_id}
+            if text:
+                payload["text"] = text
+                payload["show_alert"] = show_alert
+            resp = requests.post(url, json=payload, timeout=10)
+            return resp.status_code == 200
+        except Exception as e:
+            logger.error(f"Error answering callback query {callback_query_id}: {e}")
+            return False
+
+    def handle_callback_query(self, query: Dict[str, Any]):
+        """Handles interactive inline button clicks (Stop, Resume, Auto-solve, Scan, Quizzes)."""
+        query_id = query.get("id")
+        data = query.get("data", "")
+        message = query.get("message", {})
+        chat = message.get("chat", {})
+        chat_id = chat.get("id") or query.get("from", {}).get("id")
+        msg_id = message.get("message_id")
+
+        if not chat_id:
+            if query_id:
+                self.answer_callback_query(query_id)
+            return
+
+        if not self.access_controller.is_allowed(chat_id):
+            if query_id:
+                self.answer_callback_query(query_id, "🔒 Whitelist required", show_alert=True)
+            return
+
+        user = self.user_manager.get_user(chat_id)
+        if not user or not user.get("email"):
+            if query_id:
+                self.answer_callback_query(query_id, "⚠️ Koi account link nahi hai. Type /start", show_alert=True)
+            return
+
+        if data == "btn_stop":
+            self.user_manager.set_user_active(chat_id, False)
+            if query_id:
+                self.answer_callback_query(query_id, "🛑 24/7 Bot Stopped!")
+            new_text = (
+                f"🛑 <b>24/7 Bot Paused / Stopped</b>\n\n"
+                f"👤 <b>Student:</b> {user.get('student_name', 'Student')} (<code>{user.get('email')}</code>)\n\n"
+                f"⚠️ Ab bot background me kuch bhi scan ya auto-solve nahi karega.\n"
+                f"Jab aap chahein tab neeche button dabakar ya <code>/resume</code> se wapas chalu kar sakte hain."
+            )
+            if msg_id:
+                self.edit_message(chat_id, msg_id, new_text, reply_markup=self._get_control_keyboard(chat_id))
+            else:
+                self.send_message(chat_id, new_text, reply_markup=self._get_control_keyboard(chat_id))
+
+        elif data == "btn_resume":
+            self.user_manager.set_user_active(chat_id, True)
+            if query_id:
+                self.answer_callback_query(query_id, "▶️ 24/7 Bot Resumed!")
+            new_text = (
+                f"▶️ <b>24/7 Bot Active / Resumed!</b>\n\n"
+                f"👤 <b>Student:</b> {user.get('student_name', 'Student')} (<code>{user.get('email')}</code>)\n\n"
+                f"✅ Background monitoring active hai. Naye quizzes aur assignments track hote rahenge."
+            )
+            if msg_id:
+                self.edit_message(chat_id, msg_id, new_text, reply_markup=self._get_control_keyboard(chat_id))
+            else:
+                self.send_message(chat_id, new_text, reply_markup=self._get_control_keyboard(chat_id))
+
+        elif data == "btn_autosolve_off":
+            self.user_manager.set_user_autosolve(chat_id, False)
+            if query_id:
+                self.answer_callback_query(query_id, "⏸️ Auto-Solve Disabled (Notify Only)")
+            new_text = (
+                f"⏸️ <b>Auto-Solve: OFF (Notification-Only Mode)</b>\n\n"
+                f"👤 <b>Student:</b> {user.get('student_name', 'Student')} (<code>{user.get('email')}</code>)\n\n"
+                f"📢 Jab bhi naya quiz aayega, bot aapko Telegram par alert bhejega par <b>solve ya submit NAHI karega</b>.\n"
+                f"Aap classroom me baithkar mobile/laptop par khud quiz de sakte hain bina kisi background interruption ke."
+            )
+            if msg_id:
+                self.edit_message(chat_id, msg_id, new_text, reply_markup=self._get_control_keyboard(chat_id))
+            else:
+                self.send_message(chat_id, new_text, reply_markup=self._get_control_keyboard(chat_id))
+
+        elif data == "btn_autosolve_on":
+            self.user_manager.set_user_autosolve(chat_id, True)
+            if query_id:
+                self.answer_callback_query(query_id, "⚡ Auto-Solve Enabled (Full Auto)")
+            new_text = (
+                f"⚡ <b>Auto-Solve: ON (Full Auto Mode)</b>\n\n"
+                f"👤 <b>Student:</b> {user.get('student_name', 'Student')} (<code>{user.get('email')}</code>)\n\n"
+                f"🤖 Bot 24/7 pending quizzes ko detect karke Gemini AI se automatically solve aur submit karega."
+            )
+            if msg_id:
+                self.edit_message(chat_id, msg_id, new_text, reply_markup=self._get_control_keyboard(chat_id))
+            else:
+                self.send_message(chat_id, new_text, reply_markup=self._get_control_keyboard(chat_id))
+
+        elif data == "btn_scan":
+            if query_id:
+                self.answer_callback_query(query_id, "🔍 Scanning LMS...")
+            self.send_message(chat_id, "🔍 <i>LMS scan shuru ho raha hai... Please wait...</i>")
+            if self.on_demand_scanner:
+                res = self.on_demand_scanner(chat_id)
+                self.send_message(
+                    chat_id,
+                    f"✅ Scan Complete!\nQuizzes: {res.get('quizzes', 0)}\nAssignments: {res.get('assignments', 0)}",
+                    reply_markup=self._get_control_keyboard(chat_id)
+                )
+            else:
+                self.send_message(chat_id, "✅ On-demand scan queued.", reply_markup=self._get_control_keyboard(chat_id))
+
+        elif data == "btn_quizzes":
+            if query_id:
+                self.answer_callback_query(query_id)
+            self.handle_quiz(chat_id)
+
+        else:
+            if query_id:
+                self.answer_callback_query(query_id)
 
     def handle_message(self, message: Dict[str, Any]):
         chat = message.get("chat", {})
@@ -286,25 +438,28 @@ class TelegramServer:
                 self.handle_marks(chat_id)
                 return
 
-            elif cmd == "/status":
+            elif cmd in ["/status", "/settings", "/control"]:
                 user = self.user_manager.get_user(chat_id)
                 if not user or not user.get("email"):
                     self.send_message(chat_id, "⚠️ Aapka koi account link nahi hai. Type karein /start apna account connect karne ke liye.")
                     return
                 
-                status_str = "🟢 Active (Monitoring 24/7)" if user.get("is_active", True) else "🔴 Paused"
+                status_str = "🟢 Active (Monitoring 24/7)" if user.get("is_active", True) else "🛑 Paused / Stopped"
+                auto_solve_str = "⚡ Enabled (Auto-solves quizzes)" if user.get("auto_solve", True) else "⏸️ Disabled (Notification Only)"
                 msg = (
-                    f"📊 <b>LMS Lexyta Monitoring Status</b>\n\n"
+                    f"📊 <b>LMS Lexyta Monitoring & Control</b>\n\n"
                     f"👤 <b>Student:</b> {user.get('student_name', 'Student')}\n"
                     f"📧 <b>Email:</b> {user.get('email')}\n"
                     f"🎓 <b>Program:</b> {user.get('program_name')}\n"
                     f"🔄 <b>Semester Filter:</b> {user.get('semester_filter', 'auto')}\n"
-                    f"⚡ <b>Status:</b> {status_str}\n"
+                    f"⚡ <b>24/7 Bot:</b> {status_str}\n"
+                    f"🤖 <b>Auto-Solve:</b> {auto_solve_str}\n"
                     f"🕒 <b>Last Scan:</b> {user.get('last_scan_utc', 'Pending first scan')}\n"
                     f"🎯 <b>Solved Quizzes:</b> {len(user.get('solved_quizzes', []))}\n"
-                    f"📢 <b>Notified Assignments:</b> {len(user.get('notified_assignments', []))}"
+                    f"📢 <b>Notified Assignments:</b> {len(user.get('notified_assignments', []))}\n\n"
+                    f"<i>Neeche diye gaye buttons se bot ko ON/OFF control karein:</i>"
                 )
-                self.send_message(chat_id, msg)
+                self.send_message(chat_id, msg, reply_markup=self._get_control_keyboard(chat_id))
                 return
 
             elif cmd == "/scan":
@@ -315,23 +470,60 @@ class TelegramServer:
                 self.send_message(chat_id, "🔍 <i>LMS scan shuru ho raha hai... Please wait...</i>")
                 if self.on_demand_scanner:
                     res = self.on_demand_scanner(chat_id)
-                    self.send_message(chat_id, f"✅ Scan Complete!\nQuizzes solved: {res.get('quizzes', 0)}\nAssignments alerted: {res.get('assignments', 0)}")
+                    self.send_message(chat_id, f"✅ Scan Complete!\nQuizzes solved: {res.get('quizzes', 0)}\nAssignments alerted: {res.get('assignments', 0)}", reply_markup=self._get_control_keyboard(chat_id))
                 else:
-                    self.send_message(chat_id, "✅ On-demand scan queued. Background runner will check within a few moments.")
+                    self.send_message(chat_id, "✅ On-demand scan queued. Background runner will check within a few moments.", reply_markup=self._get_control_keyboard(chat_id))
                 return
 
-            elif cmd == "/pause":
+            elif cmd in ["/stop", "/pause", "/off", "/disable"]:
                 if self.user_manager.set_user_active(chat_id, False):
-                    self.send_message(chat_id, "⏸️ Monitoring <b>Paused</b>. Ab koi automatic alerts nahi aayenge. Resume karne ke liye /resume type karein.")
+                    self.send_message(
+                        chat_id,
+                        "🛑 <b>24/7 Bot Stopped / Paused!</b>\n\n"
+                        "Ab background runner aapke LMS account ko scan ya solve nahi karega.\n"
+                        "Jab resume karna ho, <code>/resume</code> type karein ya neeche button dabayein.",
+                        reply_markup=self._get_control_keyboard(chat_id)
+                    )
                 else:
-                    self.send_message(chat_id, "⚠️ Koi account link nahi hai.")
+                    self.send_message(chat_id, "⚠️ Koi account link nahi hai. Type /start")
                 return
 
-            elif cmd == "/resume":
+            elif cmd in ["/resume", "/start_auto", "/on", "/enable"]:
                 if self.user_manager.set_user_active(chat_id, True):
-                    self.send_message(chat_id, "▶️ Monitoring <b>Resumed</b>! System 24/7 background check karega.")
+                    self.send_message(
+                        chat_id,
+                        "▶️ <b>24/7 Bot Resumed / Active!</b>\n\n"
+                        "System background me 24/7 aapke pending quizzes aur assignments monitor karta rahega.",
+                        reply_markup=self._get_control_keyboard(chat_id)
+                    )
                 else:
-                    self.send_message(chat_id, "⚠️ Koi account link nahi hai.")
+                    self.send_message(chat_id, "⚠️ Koi account link nahi hai. Type /start")
+                return
+
+            elif cmd in ["/autosolve", "/solvemode"]:
+                user = self.user_manager.get_user(chat_id)
+                if not user or not user.get("email"):
+                    self.send_message(chat_id, "⚠️ Koi account link nahi hai. Type /start")
+                    return
+                parts = text.split()
+                current = user.get("auto_solve", True)
+                if len(parts) > 1:
+                    arg = parts[1].strip().lower()
+                    if arg in ["off", "stop", "disable", "no", "false", "pause"]:
+                        new_state = False
+                    elif arg in ["on", "start", "enable", "yes", "true", "resume"]:
+                        new_state = True
+                    else:
+                        new_state = not current
+                else:
+                    new_state = not current
+                self.user_manager.set_user_autosolve(chat_id, new_state)
+                state_str = "⚡ <b>Enabled</b> (Full Auto: detects & auto-submits)" if new_state else "⏸️ <b>Disabled</b> (Notification Only: won't touch quizzes)"
+                self.send_message(
+                    chat_id,
+                    f"🤖 Auto-Solve status: {state_str}\n\n<i>Toggle karne ke liye buttons ka use karein:</i>",
+                    reply_markup=self._get_control_keyboard(chat_id)
+                )
                 return
 
             elif cmd == "/unlink" or cmd == "/logout":
@@ -343,19 +535,20 @@ class TelegramServer:
             elif cmd == "/help":
                 help_msg = (
                     "ℹ️ <b>Lexyta LMS Bot - Commands Guide</b>\n\n"
+                    "• /status - 24/7 monitor status aur Stop/Resume control buttons dekhein\n"
+                    "• /stop - 24/7 bot ko pause/stop karein (exam ke time safe rehne ke liye)\n"
+                    "• /resume - 24/7 bot ko wapas active/chalu karein\n"
+                    "• /autosolve - Auto-solve toggle karein (ON = AI auto-solve, OFF = notify only)\n"
                     "• /quiz - Check karein kitne quiz rehte hain jo attempt kar sakte hain\n"
                     "• /solve - Pending quizzes ko abhi Gemini AI se solve & submit karein\n"
                     "• /assignments - Jo assignments open hain aur abhi submit kar sakte hain\n"
                     "• /notes - Lecture notes, PPTs & outlines download karein\n"
                     "• /marks - Released exam/quiz scores & results dekhein\n"
-                    "• /status - 24/7 background monitor status dekhein\n"
                     "• /scan - Manual full scan pass run karein\n"
                     "• /relink - Email ya password change karein\n"
-                    "• /pause - Auto-alerts pause karein\n"
-                    "• /resume - Auto-alerts resume karein\n"
                     "• /unlink - Account disconnect karein"
                 )
-                self.send_message(chat_id, help_msg)
+                self.send_message(chat_id, help_msg, reply_markup=self._get_control_keyboard(chat_id))
                 return
 
         # -------------------------------------------------------------
@@ -1074,6 +1267,8 @@ class TelegramServer:
                         offset = update["update_id"] + 1
                         if "message" in update:
                             self.handle_message(update["message"])
+                        elif "callback_query" in update:
+                            self.handle_callback_query(update["callback_query"])
                 elif resp.status_code in [401, 404]:
                     logger.error(f"Invalid Telegram bot token: {resp.text}")
                     time.sleep(10)

@@ -117,6 +117,22 @@ class MultiScanner:
                         if overdue:
                             continue
 
+                        # Check if user has auto-solve enabled or paused
+                        auto_solve_enabled = user.get("auto_solve", True)
+                        if not auto_solve_enabled:
+                            if not self.user_manager.is_quiz_notified(chat_id, item_id):
+                                manual_alert = (
+                                    f"📢 <b>LMS Quiz Available!</b>\n\n"
+                                    f"📚 <b>Subject:</b> {class_name}\n"
+                                    f"📝 <b>Quiz:</b> {item_name}\n"
+                                    f"⏰ <b>Status:</b> {status}\n\n"
+                                    f"<i>ℹ️ Auto-Solve aapke account ke liye PAUSED hai. Bot ise solve nahi karega.</i>\n"
+                                    f"<i>Agar bot se solve karwana hai toh type karein: /solve ya /resume</i>"
+                                )
+                                notifier.send(manual_alert)
+                                self.user_manager.mark_quiz_notified(chat_id, item_id)
+                            continue
+
                         logger.info(f"[QUIZ FOUND] {class_name} | {item_name}")
 
                         if not dry_run:
