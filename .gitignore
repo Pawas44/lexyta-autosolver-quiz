@@ -35,3 +35,6 @@ Thumbs.db
 public_export/
 
 scratch_bundle.js
+
+scripts/lms_bundle.js
+scripts/analyze_frontend.py
