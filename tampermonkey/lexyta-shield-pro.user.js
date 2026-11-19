@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Lexyta Shield Pro
 // @namespace    https://lms.lexyta.com
-// @version      3.0
-// @description  Complete proctoring neutralizer — reverse-engineered from Lexyta's main-RCXULGX4.js production bundle (68 proctoring hooks, Socket.IO heartbeat, flush pipeline)
+// @version      5.0
+// @description  Stealth-Grade Proctoring Neutralizer — bypasses bi$1 anti-tamper + Sn$1 event-block detection (reverse-engineered from main-RCXULGX4.js)
 // @author       Pawas
 // @match        https://lms.lexyta.com/*
 // @grant        none
@@ -14,374 +14,209 @@
   "use strict";
 
   // ═══════════════════════════════════════════════════════════════════
-  //  LEXYTA PROCTORING SYSTEM — REVERSE ENGINEERED COMPONENTS:
+  //  LEXYTA PROCTORING ENGINE — ANTI-TAMPER ANALYSIS
   //
-  //  1. ProctoringService — Tab switch counter, mouse leave counter,
-  //     clipboard intercept, fullscreen enforcer, DevTools detector
-  //  2. Socket.IO pipeline — flushIntervalMs: 5000, heartbeatIntervalMs: 15000
-  //     Events: "proctoring:event", "proctoring:heartbeat"
-  //  3. Event buffer — Collects events locally, flushes every 5s to backend
-  //  4. Fullscreen API — Forces fullscreen, exits quiz on escape
-  //  5. BeforeUnload trap — Prevents page navigation during quiz
-  //  6. Console/DevTools size detection — window.outerWidth - window.innerWidth
+  //  Lexyta's proctoring (class Ug in main-RCXULGX4.js) runs TWO
+  //  checks before allowing a proctored quiz to start:
   //
-  //  This script neutralizes ALL of them at the JavaScript engine level
-  //  BEFORE Lexyta's bundle loads.
+  //  CHECK 1 — bi$1() → "VISIBILITY_API_TAMPERED"
+  //    • Calls _n$1(getter) which checks Function.prototype.toString
+  //      for [native code] on Document.prototype.hidden getter,
+  //      Document.prototype.visibilityState getter, and hasFocus.
+  //    • Checks Object.getOwnPropertyDescriptor(document, "hidden")
+  //      and visibilityState — if defined on INSTANCE → tampered!
+  //
+  //  CHECK 2 — Sn$1() → "EVENTS_BLOCKED"
+  //    • Registers a fresh listener → dispatches synthetic Event →
+  //      checks if the listener was actually called.
+  //    • If addEventListener was overridden to drop listeners,
+  //      the synthetic test event never reaches the test listener.
+  //
+  //  RUNTIME — runProbe() every 5s:
+  //    • Removes all listeners → runs qt$1() again → re-registers.
+  //    • Also checks navigator.webdriver → INTEGRITY_VIOLATION.
+  //
+  //  OUR BYPASS STRATEGY:
+  //  1. Override getters on Document.PROTOTYPE (not instance)
+  //  2. Patch Function.prototype.toString to return [native code]
+  //  3. Do NOT override addEventListener
+  //  4. Use isTrusted-based capture filtering to block real events
+  //     but let synthetic test events through
   // ═══════════════════════════════════════════════════════════════════
 
-  const LOG_PREFIX = ""; // Empty = no console logs (stealth). Set to "🛡️" for debug.
-  function log(...args) {
-    if (LOG_PREFIX) console.log(LOG_PREFIX, ...args);
-  }
+  // ─────────────────────────────────────────────
+  //  STEP 1: Native toString faker
+  // ─────────────────────────────────────────────
 
-  log("Shield initializing (document-start)...");
+  const _nativeFns = new Map();
+  const _origToString = Function.prototype.toString;
+
+  Function.prototype.toString = function () {
+    if (_nativeFns.has(this)) {
+      return "function " + (_nativeFns.get(this) || "") + "() { [native code] }";
+    }
+    return _origToString.call(this);
+  };
+  _nativeFns.set(Function.prototype.toString, "toString");
 
   // ─────────────────────────────────────────────
-  // 1. VISIBILITY API — COMPLETE LOCKDOWN
+  //  STEP 2: Prototype-level visibility spoof
   // ─────────────────────────────────────────────
-  // Lexyta checks document.visibilityState and document.hidden
-  // on every visibilitychange event and counts tab switches.
+  // Override on Document.prototype, NOT on document instance.
+  // This passes bi$1's instance-level descriptor check.
 
-  // Lock visibilityState to 'visible'
-  Object.defineProperty(document, "visibilityState", {
-    get: () => "visible",
-    configurable: true,
+  const fakeGetHidden = function hidden() { return false; };
+  const fakeGetVisState = function visibilityState() { return "visible"; };
+  const fakeHasFocus = function hasFocus() { return true; };
+
+  _nativeFns.set(fakeGetHidden, "get hidden");
+  _nativeFns.set(fakeGetVisState, "get visibilityState");
+  _nativeFns.set(fakeHasFocus, "hasFocus");
+
+  Object.defineProperty(Document.prototype, "hidden", {
+    get: fakeGetHidden, configurable: true, enumerable: true
+  });
+  Object.defineProperty(Document.prototype, "visibilityState", {
+    get: fakeGetVisState, configurable: true, enumerable: true
+  });
+  Document.prototype.hasFocus = fakeHasFocus;
+
+  // Clean any instance-level descriptors from previous script versions
+  try { delete document.hidden; } catch (e) {}
+  try { delete document.visibilityState; } catch (e) {}
+  try { delete document.webkitHidden; } catch (e) {}
+  try { delete document.webkitVisibilityState; } catch (e) {}
+
+  // ─────────────────────────────────────────────
+  //  STEP 3: Fullscreen spoof (prototype-level)
+  // ─────────────────────────────────────────────
+
+  const fakeGetFSElem = function fullscreenElement() { return document.documentElement; };
+  const fakeGetFS = function fullscreen() { return true; };
+  _nativeFns.set(fakeGetFSElem, "get fullscreenElement");
+  _nativeFns.set(fakeGetFS, "get fullscreen");
+
+  Object.defineProperty(Document.prototype, "fullscreenElement", {
+    get: fakeGetFSElem, configurable: true, enumerable: true
+  });
+  Object.defineProperty(Document.prototype, "webkitFullscreenElement", {
+    get: fakeGetFSElem, configurable: true, enumerable: true
+  });
+  Object.defineProperty(Document.prototype, "fullscreen", {
+    get: fakeGetFS, configurable: true, enumerable: true
+  });
+  Object.defineProperty(Document.prototype, "webkitIsFullScreen", {
+    get: fakeGetFS, configurable: true, enumerable: true
   });
 
-  // Lock hidden to false
-  Object.defineProperty(document, "hidden", {
-    get: () => false,
-    configurable: true,
-  });
-
-  // Also lock webkitVisibilityState (older browsers)
-  try {
-    Object.defineProperty(document, "webkitVisibilityState", {
-      get: () => "visible",
-      configurable: true,
-    });
-    Object.defineProperty(document, "webkitHidden", {
-      get: () => false,
-      configurable: true,
-    });
-  } catch (e) {}
-
-  // Block hasFocus — Lexyta calls document.hasFocus() in its proctoring loop
-  Document.prototype.hasFocus = function () {
-    return true;
-  };
+  // No-op fullscreen methods
+  Element.prototype.requestFullscreen = function () { return Promise.resolve(); };
+  Element.prototype.webkitRequestFullscreen = function () { return Promise.resolve(); };
+  Document.prototype.exitFullscreen = function () { return Promise.resolve(); };
+  Document.prototype.webkitExitFullscreen = function () { return Promise.resolve(); };
 
   // ─────────────────────────────────────────────
-  // 2. EVENT INTERCEPTION — NUCLEAR APPROACH
+  //  STEP 4: isTrusted event filtering
   // ─────────────────────────────────────────────
-  // Instead of just stopImmediatePropagation (which Lexyta can detect
-  // by checking if its own listener fired), we intercept addEventListener
-  // itself and silently DROP Lexyta's proctoring listeners.
+  // We do NOT override addEventListener (that would trigger EVENTS_BLOCKED).
+  // Instead, we register capture-phase listeners FIRST (document-start).
+  // Real browser events (isTrusted:true) → stopImmediatePropagation
+  // Synthetic test events (isTrusted:false) → pass through (Sn$1 passes)
 
-  const BLOCKED_EVENTS = new Set([
-    // Tab/window focus events
-    "visibilitychange",
-    "webkitvisibilitychange",
-    "pagehide",
-    "pageshow",
-    "blur",
-    "focus",
-    // Mouse leave tracking
-    "mouseleave",
-    "mouseout",
-    // Clipboard monitoring
-    "copy",
-    "cut",
-    "paste",
-    // Context menu block
-    "contextmenu",
-    // Fullscreen events (Lexyta forces fullscreen and detects exit)
-    "fullscreenchange",
-    "webkitfullscreenchange",
-    "mozfullscreenchange",
-    "MSFullscreenChange",
-    "fullscreenerror",
-  ]);
+  const INTERCEPT_ON_DOCUMENT = [
+    "visibilitychange", "webkitvisibilitychange",
+    "paste", "copy", "cut",
+    "fullscreenchange", "webkitfullscreenchange",
+    "mouseleave", "mouseenter",
+    "contextmenu"
+  ];
 
-  // Keep a reference to the REAL addEventListener
-  const _realAddEventListener = EventTarget.prototype.addEventListener;
-  const _realRemoveEventListener = EventTarget.prototype.removeEventListener;
+  const INTERCEPT_ON_WINDOW = [
+    "blur", "focus", "resize", "beforeunload"
+  ];
 
-  // Track blocked listeners so we can count them
-  let blockedCount = 0;
-
-  // Override addEventListener on ALL targets (window, document, elements)
-  EventTarget.prototype.addEventListener = function (type, listener, options) {
-    // Check if this is a proctoring event we should block
-    if (BLOCKED_EVENTS.has(type)) {
-      // Check if this listener is from Lexyta's code (not our own)
-      // We allow our own listeners by marking them
-      if (listener && !listener._shieldAllowed) {
-        blockedCount++;
-        log(`Blocked listener: ${type} (total blocked: ${blockedCount})`);
-        // Don't register it at all — silently drop
-        return;
-      }
-    }
-    // Allow all other listeners through
-    return _realAddEventListener.call(this, type, listener, options);
-  };
-
-  // Helper to register our OWN listeners that bypass the block
-  function addOwnListener(target, type, fn, options) {
-    fn._shieldAllowed = true;
-    _realAddEventListener.call(target, type, fn, options);
+  for (const evt of INTERCEPT_ON_DOCUMENT) {
+    document.addEventListener(evt, function (e) {
+      if (e.isTrusted) e.stopImmediatePropagation();
+    }, true);
   }
 
-  // ─────────────────────────────────────────────
-  // 3. KEYBOARD LOCKDOWN BYPASS
-  // ─────────────────────────────────────────────
-  // Lexyta blocks: F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+U,
-  // and sometimes Ctrl+C/Ctrl+V during quizzes
+  for (const evt of INTERCEPT_ON_WINDOW) {
+    window.addEventListener(evt, function (e) {
+      if (e.isTrusted) e.stopImmediatePropagation();
+    }, true);
+  }
 
-  addOwnListener(document, "keydown", function (e) {
-    // Allow ALL keyboard shortcuts — override any preventDefault
-    // Specifically re-enable:
-    // - F12 (DevTools)
-    // - Ctrl+Shift+I (Inspect)
-    // - Ctrl+Shift+J (Console)
-    // - Ctrl+U (View Source)
-    // - Ctrl+C/V/X (Copy/Paste/Cut)
-    // - Ctrl+A (Select All)
-    // We do this by stopping propagation so Lexyta's keydown handler never sees it
-    const dominated = [
-      e.key === "F12",
-      e.ctrlKey && e.shiftKey && e.key === "I",
-      e.ctrlKey && e.shiftKey && e.key === "J",
-      e.ctrlKey && e.key === "u",
-      e.ctrlKey && e.key === "c",
-      e.ctrlKey && e.key === "v",
-      e.ctrlKey && e.key === "x",
-      e.ctrlKey && e.key === "a",
-    ];
+  // Keydown: block proctoring's DevTools detector but allow actual shortcuts
+  document.addEventListener("keydown", function (e) {
+    if (!e.isTrusted) return; // Let Sn$1 test through
 
-    if (dominated.some(Boolean)) {
-      e.stopImmediatePropagation();
-      // Don't preventDefault — let the browser handle it normally
-    }
-  }, true);
-
-  // Re-enable right click
-  addOwnListener(document, "contextmenu", function (e) {
+    // Block the event from reaching proctoring handler
     e.stopImmediatePropagation();
+
+    // But we don't preventDefault — so F12, Ctrl+Shift+I, etc. still work
+    // The browser processes the shortcut natively
   }, true);
 
   // ─────────────────────────────────────────────
-  // 4. FULLSCREEN API NEUTRALIZER
+  //  STEP 5: DevTools size detection bypass
   // ─────────────────────────────────────────────
-  // Lexyta forces fullscreen mode during quizzes and detects
-  // when you exit fullscreen (Escape key). We make it THINK
-  // it's always in fullscreen.
-
-  // Override fullscreen state getters
-  Object.defineProperty(document, "fullscreenElement", {
-    get: () => document.documentElement,
-    configurable: true,
-  });
-  Object.defineProperty(document, "webkitFullscreenElement", {
-    get: () => document.documentElement,
-    configurable: true,
-  });
-  Object.defineProperty(document, "mozFullScreenElement", {
-    get: () => document.documentElement,
-    configurable: true,
-  });
-  Object.defineProperty(document, "msFullscreenElement", {
-    get: () => document.documentElement,
-    configurable: true,
-  });
-
-  // Fullscreen state flags
-  Object.defineProperty(document, "fullscreen", {
-    get: () => true,
-    configurable: true,
-  });
-  Object.defineProperty(document, "webkitIsFullScreen", {
-    get: () => true,
-    configurable: true,
-  });
-  Object.defineProperty(document, "mozFullScreen", {
-    get: () => true,
-    configurable: true,
-  });
-
-  // Make requestFullscreen a no-op (prevents the actual fullscreen popup)
-  Element.prototype.requestFullscreen = function () {
-    return Promise.resolve();
-  };
-  Element.prototype.webkitRequestFullscreen = function () {
-    return Promise.resolve();
-  };
-  Element.prototype.webkitRequestFullScreen = function () {
-    return Promise.resolve();
-  };
-  Element.prototype.mozRequestFullScreen = function () {
-    return Promise.resolve();
-  };
-  Element.prototype.msRequestFullscreen = function () {
-    return Promise.resolve();
-  };
-
-  // Make exitFullscreen a no-op
-  Document.prototype.exitFullscreen = function () {
-    return Promise.resolve();
-  };
-  Document.prototype.webkitExitFullscreen = function () {
-    return Promise.resolve();
-  };
-  Document.prototype.mozCancelFullScreen = function () {
-    return Promise.resolve();
-  };
-  Document.prototype.msExitFullscreen = function () {
-    return Promise.resolve();
-  };
-
-  // ─────────────────────────────────────────────
-  // 5. DEVTOOLS SIZE DETECTION BYPASS
-  // ─────────────────────────────────────────────
-  // Lexyta uses: (window.outerWidth - window.innerWidth > 160)
-  // to detect if DevTools is open on the side.
-  // We lock these values to make the difference always ~0.
-
-  const _innerWidth = window.innerWidth;
-  const _innerHeight = window.innerHeight;
+  // Lexyta: (window.outerWidth - window.innerWidth > 160) → DevTools open
 
   Object.defineProperty(window, "outerWidth", {
-    get: () => window.innerWidth + 8, // Normal browser chrome width
+    get: () => window.innerWidth + 8,
     configurable: true,
   });
   Object.defineProperty(window, "outerHeight", {
-    get: () => window.innerHeight + 80, // Normal title bar + address bar
+    get: () => window.innerHeight + 80,
     configurable: true,
   });
 
-  // Also block the Firebug/debugger detection trick
-  // (some proctoring systems use: debugger; statement + timing)
-  // We can't fully block this, but we can override the timing checks
+  // Ensure navigator.webdriver is false (runProbe checks this)
+  try {
+    Object.defineProperty(navigator, "webdriver", {
+      get: () => false, configurable: true
+    });
+  } catch (e) {}
 
   // ─────────────────────────────────────────────
-  // 6. SOCKET.IO EVENT INTERCEPTOR
+  //  STEP 6: Network layer interception
   // ─────────────────────────────────────────────
-  // Lexyta sends proctoring events via Socket.IO:
-  //   socket.emit("proctoring:event", { type: "TAB_SWITCH", count: N })
-  //   socket.emit("proctoring:heartbeat", { ... })
-  //
-  // We intercept the Socket.IO emit function and filter out
-  // proctoring events, letting all other socket events through.
+  // Block proctoring HTTP flushes + Socket.IO events + recovery
 
-  function patchSocketIO() {
-    // Wait for io() to be available
-    if (typeof window.io === "undefined") return false;
-
-    const _origIO = window.io;
-    window.io = function (...args) {
-      const socket = _origIO.apply(this, args);
-      patchSocket(socket);
-      return socket;
-    };
-    // Copy static properties
-    Object.assign(window.io, _origIO);
-    return true;
-  }
-
-  function patchSocket(socket) {
-    if (!socket || socket._shieldPatched) return;
-    socket._shieldPatched = true;
-
-    const _origEmit = socket.emit;
-    socket.emit = function (event, ...args) {
-      // Block proctoring events
-      if (typeof event === "string" && event.toLowerCase().includes("proctor")) {
-        log(`Blocked socket emit: "${event}"`);
-        return socket; // Silently swallow
-      }
-      // Allow everything else
-      return _origEmit.apply(this, [event, ...args]);
-    };
-  }
-
-  // Also intercept WebSocket directly (in case they use raw WS)
-  const _OrigWebSocket = window.WebSocket;
-  window.WebSocket = function (...args) {
-    const ws = new _OrigWebSocket(...args);
-    const _origSend = ws.send.bind(ws);
-    ws.send = function (data) {
-      // Check if data contains proctoring payload
-      try {
-        const str = typeof data === "string" ? data : "";
-        if (str.includes("proctor") || str.includes("tab_switch") || str.includes("mouse_leave")) {
-          log("Blocked WebSocket proctoring payload");
-          return;
-        }
-      } catch (e) {}
-      return _origSend(data);
-    };
-    return ws;
-  };
-  // Keep prototype chain intact
-  window.WebSocket.prototype = _OrigWebSocket.prototype;
-  window.WebSocket.CONNECTING = _OrigWebSocket.CONNECTING;
-  window.WebSocket.OPEN = _OrigWebSocket.OPEN;
-  window.WebSocket.CLOSING = _OrigWebSocket.CLOSING;
-  window.WebSocket.CLOSED = _OrigWebSocket.CLOSED;
-
-  // ─────────────────────────────────────────────
-  // 7. FETCH / XHR INTERCEPTOR
-  // ─────────────────────────────────────────────
-  // Lexyta flushes proctoring events via HTTP POST every 5 seconds.
-  // We intercept fetch() and XMLHttpRequest to block proctoring API calls.
-
+  // Fetch
   const _origFetch = window.fetch;
   window.fetch = function (url, options) {
-    const urlStr = typeof url === "string" ? url : url?.url || "";
-    if (urlStr.includes("proctor") || urlStr.includes("proctoring")) {
-      log("Blocked fetch to proctoring endpoint:", urlStr);
-      // Return a fake successful response
-      return Promise.resolve(
-        new Response(JSON.stringify({ success: true }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        })
-      );
+    const u = typeof url === "string" ? url : url?.url || "";
+    if (u.includes("proctor") || u.includes("/proctoring")) {
+      return Promise.resolve(new Response(
+        JSON.stringify({ success: true }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      ));
     }
-
-    // Also check POST body for proctoring data
     if (options?.body) {
       try {
-        const bodyStr = typeof options.body === "string" ? options.body : "";
-        if (bodyStr.includes("tab_switch") || bodyStr.includes("mouse_leave") || bodyStr.includes("clipboard")) {
-          log("Blocked fetch with proctoring body");
-          return Promise.resolve(
-            new Response(JSON.stringify({ success: true }), {
-              status: 200,
-              headers: { "Content-Type": "application/json" },
-            })
-          );
+        const b = typeof options.body === "string" ? options.body : "";
+        if (b.includes("tab_switch") || b.includes("mouse_leave") || b.includes("proctoring")) {
+          return Promise.resolve(new Response(
+            JSON.stringify({ success: true }),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          ));
         }
       } catch (e) {}
     }
-
     return _origFetch.apply(this, arguments);
   };
 
-  // XMLHttpRequest intercept
+  // XHR
   const _origXHROpen = XMLHttpRequest.prototype.open;
   const _origXHRSend = XMLHttpRequest.prototype.send;
-
   XMLHttpRequest.prototype.open = function (method, url, ...rest) {
     this._shieldUrl = url || "";
     return _origXHROpen.apply(this, [method, url, ...rest]);
   };
-
   XMLHttpRequest.prototype.send = function (body) {
     if (this._shieldUrl && (this._shieldUrl.includes("proctor") || this._shieldUrl.includes("proctoring"))) {
-      log("Blocked XHR to proctoring endpoint:", this._shieldUrl);
-      // Fake a successful response
       Object.defineProperty(this, "readyState", { get: () => 4 });
       Object.defineProperty(this, "status", { get: () => 200 });
       Object.defineProperty(this, "responseText", { get: () => '{"success":true}' });
@@ -391,181 +226,86 @@
     return _origXHRSend.apply(this, arguments);
   };
 
-  // ─────────────────────────────────────────────
-  // 8. BEFOREUNLOAD / UNLOAD TRAP BYPASS
-  // ─────────────────────────────────────────────
-  // Lexyta adds onbeforeunload to prevent navigating away.
-  // We allow it but prevent the confirmation dialog.
+  // WebSocket
+  const _OrigWS = window.WebSocket;
+  window.WebSocket = function (...args) {
+    const ws = new _OrigWS(...args);
+    const _origSend = ws.send.bind(ws);
+    ws.send = function (data) {
+      try {
+        const str = typeof data === "string" ? data : "";
+        if (str.includes("proctor") || str.includes("tab_switch") || str.includes("mouse_leave")) {
+          return; // Silently swallow
+        }
+      } catch (e) {}
+      return _origSend(data);
+    };
+    return ws;
+  };
+  window.WebSocket.prototype = _OrigWS.prototype;
+  window.WebSocket.CONNECTING = _OrigWS.CONNECTING;
+  window.WebSocket.OPEN = _OrigWS.OPEN;
+  window.WebSocket.CLOSING = _OrigWS.CLOSING;
+  window.WebSocket.CLOSED = _OrigWS.CLOSED;
 
-  // Intercept onbeforeunload assignment
-  let _beforeUnloadHandler = null;
+  // ─────────────────────────────────────────────
+  //  STEP 7: Block onbeforeunload trap
+  // ─────────────────────────────────────────────
   Object.defineProperty(window, "onbeforeunload", {
-    get: () => _beforeUnloadHandler,
-    set: (fn) => {
-      // Store it but don't actually set it
-      _beforeUnloadHandler = null;
-      log("Blocked onbeforeunload assignment");
-    },
+    get: () => null,
+    set: () => {},
     configurable: true,
   });
 
-  // Also block addEventListener for beforeunload from Lexyta
-  // (Already handled by BLOCKED_EVENTS won't include beforeunload by default
-  //  since it's sometimes useful — but we neuter the confirmation)
-
   // ─────────────────────────────────────────────
-  // 9. TIMER/INTERVAL SANITIZER
+  //  STEP 8: Clean proctoring localStorage
   // ─────────────────────────────────────────────
-  // Lexyta runs proctoring checks via setInterval.
-  // We intercept setInterval and patch any that look like proctoring loops.
-
-  const _origSetInterval = window.setInterval;
-  const _origClearInterval = window.clearInterval;
-  const proctoringIntervals = new Set();
-
-  window.setInterval = function (fn, delay, ...args) {
-    // Lexyta's proctoring intervals: 5000ms (flush), 15000ms (heartbeat), 100ms (visibility check)
-    const fnStr = typeof fn === "function" ? fn.toString() : String(fn);
-    
-    // Check if this interval is proctoring-related
-    if (
-      fnStr.includes("visibilityState") ||
-      fnStr.includes("hidden") ||
-      fnStr.includes("proctor") ||
-      fnStr.includes("tabSwitch") ||
-      fnStr.includes("tab_switch") ||
-      fnStr.includes("mouseLeave") ||
-      fnStr.includes("mouse_leave") ||
-      fnStr.includes("fullscreen")
-    ) {
-      log(`Blocked proctoring setInterval (${delay}ms)`);
-      // Return a fake interval ID that does nothing
-      const fakeId = _origSetInterval.call(window, () => {}, 999999999);
-      proctoringIntervals.add(fakeId);
-      return fakeId;
+  try {
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith("lexyta_proctoring_") || key.includes("_proctor_"))) {
+        keysToRemove.push(key);
+      }
     }
-
-    return _origSetInterval.apply(this, [fn, delay, ...args]);
-  };
-
-  // ─────────────────────────────────────────────
-  // 10. NOTIFICATION API SPOOF
-  // ─────────────────────────────────────────────
-  // Some LMS systems use Notification API to track if student is active.
-
-  if (window.Notification) {
-    Object.defineProperty(window.Notification, "permission", {
-      get: () => "denied",
-      configurable: true,
-    });
-  }
+    keysToRemove.forEach(k => localStorage.removeItem(k));
+  } catch (e) {}
 
   // ─────────────────────────────────────────────
-  // 11. SCREEN CAPTURE / RECORDING DETECTION
+  //  STEP 9: CSS stealth (hide proctoring UI)
   // ─────────────────────────────────────────────
-  // Block navigator.mediaDevices.getDisplayMedia detection
-
-  if (navigator.mediaDevices) {
-    navigator.mediaDevices.getDisplayMedia = function () {
-      return Promise.reject(new Error("Not allowed"));
-    };
-  }
-
-  // ─────────────────────────────────────────────
-  // 12. CONTINUOUS HEALTH CHECK
-  // ─────────────────────────────────────────────
-  // Re-apply overrides periodically in case Lexyta tries to restore them.
-
-  _origSetInterval.call(window, () => {
-    // Re-enforce visibility state
-    try {
-      Object.defineProperty(document, "visibilityState", {
-        get: () => "visible",
-        configurable: true,
-      });
-      Object.defineProperty(document, "hidden", {
-        get: () => false,
-        configurable: true,
-      });
-    } catch (e) {}
-
-    // Re-enforce fullscreen state
-    try {
-      Object.defineProperty(document, "fullscreenElement", {
-        get: () => document.documentElement,
-        configurable: true,
-      });
-    } catch (e) {}
-  }, 2000);
-
-  // ─────────────────────────────────────────────
-  // 13. SOCKET.IO LATE-BINDING PATCH
-  // ─────────────────────────────────────────────
-  // Socket.IO might load after our script. Keep trying.
-
-  let socketPatchAttempts = 0;
-  const socketPatcher = _origSetInterval.call(window, () => {
-    socketPatchAttempts++;
-    if (patchSocketIO()) {
-      log("Socket.IO patched successfully");
-      _origClearInterval.call(window, socketPatcher);
-    }
-    if (socketPatchAttempts > 30) {
-      _origClearInterval.call(window, socketPatcher);
-    }
-  }, 1000);
-
-  // ─────────────────────────────────────────────
-  // 14. CSS INJECTION — REMOVE PROCTORING UI
-  // ─────────────────────────────────────────────
-  // Remove any "proctoring active" banners, warning overlays,
-  // fullscreen request modals, etc.
-
   function injectCSS() {
+    if (document.getElementById("sh-shield-css")) return;
     const style = document.createElement("style");
+    style.id = "sh-shield-css";
     style.textContent = `
-      /* Hide proctoring warning banners */
-      [class*="proctor" i],
-      [class*="Proctor" i],
-      [id*="proctor" i],
+      [class*="proctoring-banner" i],
       [class*="fullscreen-warning" i],
       [class*="fullscreen-overlay" i],
-      [class*="tab-switch-warning" i],
-      [class*="proctoring-banner" i] {
+      [class*="tab-switch-warning" i] {
         display: none !important;
         visibility: hidden !important;
-        opacity: 0 !important;
         pointer-events: none !important;
         height: 0 !important;
         overflow: hidden !important;
       }
-      
-      /* Re-enable text selection (some quizzes block it) */
       * {
         -webkit-user-select: text !important;
         -moz-user-select: text !important;
-        -ms-user-select: text !important;
         user-select: text !important;
       }
     `;
     (document.head || document.documentElement).appendChild(style);
   }
 
-  // Inject CSS as soon as possible
   if (document.head) {
     injectCSS();
   } else {
-    const cssObserver = new MutationObserver(() => {
-      if (document.head) {
-        injectCSS();
-        cssObserver.disconnect();
-      }
+    const obs = new MutationObserver(() => {
+      if (document.head) { injectCSS(); obs.disconnect(); }
     });
-    cssObserver.observe(document.documentElement || document, {
-      childList: true,
-      subtree: true,
-    });
+    obs.observe(document.documentElement || document, { childList: true, subtree: true });
   }
 
-  log("Shield fully armed. All 14 defense layers active.");
+  // No console output in production (stealth)
 })();
