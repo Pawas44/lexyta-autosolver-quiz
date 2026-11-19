@@ -107,24 +107,31 @@
       background-color: rgba(52, 168, 83, 0.12) !important;
     }
 
-    /* Tiny corner indicator */
+    /* Tiny corner indicator & Mobile Stealth Action Button */
     .sh-indicator {
       position: fixed;
-      bottom: 8px;
-      right: 8px;
-      width: 8px;
-      height: 8px;
+      bottom: 12px;
+      right: 12px;
+      width: 16px;
+      height: 16px;
       border-radius: 50%;
       z-index: 999999;
-      pointer-events: none;
-      transition: opacity 0.5s ease;
+      cursor: pointer;
+      background: rgba(137, 180, 250, 0.3);
+      border: 1px solid rgba(137, 180, 250, 0.45);
+      transition: all 0.3s ease;
+      touch-action: manipulation;
+    }
+    .sh-indicator:active {
+      transform: scale(1.3);
+      background: rgba(137, 180, 250, 0.7);
     }
     .sh-indicator.solving {
-      background: rgba(251, 188, 4, 0.5);
-      animation: sh-pulse 1.5s ease-in-out infinite;
+      background: rgba(251, 188, 4, 0.65) !important;
+      animation: sh-pulse 1.2s ease-in-out infinite;
     }
     .sh-indicator.done {
-      background: rgba(52, 168, 83, 0.5);
+      background: rgba(52, 168, 83, 0.65) !important;
     }
     @keyframes sh-pulse {
       0%, 100% { opacity: 0.4; }
@@ -710,23 +717,22 @@ Instructions:
   function showIndicator(state) {
     let el = document.getElementById("sh-indicator");
     if (!el) {
-      el = document.createElement("div");
-      el.id = "sh-indicator";
-      el.className = "sh-indicator";
-      document.body.appendChild(el);
+      createMobileTouchTrigger();
+      el = document.getElementById("sh-indicator");
     }
-    el.className = "sh-indicator " + state;
-    if (state === "done") {
-      setTimeout(() => {
-        el.style.opacity = "0";
-        setTimeout(() => el.remove(), 500);
-      }, 4000);
+    if (el) {
+      el.className = "sh-indicator " + state;
+      if (state === "done") {
+        setTimeout(() => {
+          el.className = "sh-indicator";
+        }, 4000);
+      }
     }
   }
 
   function hideIndicator() {
-    const el = document.getElementById("sh-indicator");
-    if (el) el.remove();
+    let el = document.getElementById("sh-indicator");
+    if (el) el.className = "sh-indicator";
   }
 
   // ═══════════════════════════════════════════════
@@ -852,10 +858,53 @@ Instructions:
   });
   urlObserver.observe(document.body, { childList: true, subtree: true });
 
+  // ═══════════════════════════════════════════════
+  //  MOBILE STEALTH TOUCH TRIGGER (Phone in class)
+  // ═══════════════════════════════════════════════
+
+  function createMobileTouchTrigger() {
+    if (document.getElementById("sh-indicator")) return;
+    const dot = document.createElement("div");
+    dot.id = "sh-indicator";
+    dot.className = "sh-indicator";
+    dot.title = "Tap to solve (Mobile Stealth)";
+
+    let lastTap = 0;
+    let longPressTimer = null;
+
+    dot.addEventListener("touchstart", () => {
+      longPressTimer = setTimeout(() => {
+        showSettingsPanel();
+      }, 700);
+    }, { passive: true });
+
+    dot.addEventListener("touchend", () => {
+      clearTimeout(longPressTimer);
+      const now = Date.now();
+      if (now - lastTap < 400) {
+        // Double tap -> auto-select answers
+        autoSelectAnswers();
+      } else {
+        // Single tap -> solve quiz
+        solveCurrentPage();
+      }
+      lastTap = now;
+    });
+
+    dot.addEventListener("click", () => {
+      solveCurrentPage();
+    });
+
+    (document.body || document.documentElement).appendChild(dot);
+  }
+
+  // Create touch trigger when on quiz page
+  setTimeout(createMobileTouchTrigger, 1200);
+
   // Initial auto-solve
   if (AUTO_SOLVE && isQuizPage() && GEMINI_KEY) {
     setTimeout(() => solveCurrentPage(), 3000);
   }
 
-  console.log("📚 Study Helper loaded. Ctrl+Shift+S to solve, Ctrl+Shift+X for settings.");
+  console.log("📚 Study Helper loaded. Mobile Touch Dot active in bottom-right corner.");
 })();
