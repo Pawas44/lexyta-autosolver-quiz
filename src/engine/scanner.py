@@ -53,6 +53,7 @@ def detect_active_classes(classes: List[Dict[str, Any]], active_filter: str) -> 
 
     # AUTO: Parse semester numbers from subject codes (e.g. BCA1, BCA2, BCA3...)
     sem_data = []
+    other_classes = []
     for cls in classes:
         name = cls.get("name", "")
         match = re.search(r'([a-zA-Z]+)(\d+)', name)
@@ -60,6 +61,9 @@ def detect_active_classes(classes: List[Dict[str, Any]], active_filter: str) -> 
             prefix = match.group(1).upper()
             sem_num = int(match.group(2))
             sem_data.append((prefix, sem_num, cls))
+        else:
+            # Non-standard or special classes (e.g. "Grand Quiz", "Common Assessment", "Value Added")
+            other_classes.append(cls)
 
     if sem_data:
         max_sem_by_prefix = {}
@@ -71,6 +75,8 @@ def detect_active_classes(classes: List[Dict[str, Any]], active_filter: str) -> 
             cls for prefix, num, cls in sem_data
             if num == max_sem_by_prefix.get(prefix)
         ]
+        # Always retain special/common classes alongside current active semester
+        auto_classes.extend(other_classes)
         if auto_classes:
             detected_tags = [f"{p}{max_sem_by_prefix[p]}" for p in max_sem_by_prefix]
             logger.info(f"Auto-detected current active semester: {', '.join(detected_tags)} ({len(auto_classes)} subjects)")
