@@ -151,8 +151,12 @@ class MultiScanner:
                         logger.info(f"[QUIZ FOUND] {student_name} | {class_name} | {item_name}")
 
                         if not dry_run:
-                            t_start = time.time()
-                            # 1. Send initial Telegram alert
+                            if not self.user_manager.acquire_solve_lock(chat_id):
+                                logger.info(f"Skipping auto-solve for {student_name} (chat {chat_id} is already solving)")
+                                continue
+                            try:
+                                t_start = time.time()
+                                # 1. Send initial Telegram alert
                             init_msg = (
                                 f"🚀 <b>LMS Quiz Detected & Started!</b>\n\n"
                                 f"{student_hdr}"
@@ -210,6 +214,8 @@ class MultiScanner:
                                     else:
                                         if prog_msg_id:
                                             notifier.edit_message(prog_msg_id, f"❌ Submission failed for <b>{item_name}</b>.")
+                            finally:
+                                self.user_manager.release_solve_lock(chat_id)
 
                     # 3. ASSIGNMENT WORKFLOW
                     else:

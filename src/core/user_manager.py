@@ -25,6 +25,7 @@ class UserManager:
         self._github = GitHubStateSync()
         self._save_counter = 0  # Batch counter
         self._dirty = False
+        self._active_solvers = set()
 
         # Load: try GitHub first, then local fallback
         cloud_state = self._github.fetch_state()
@@ -209,3 +210,23 @@ class UserManager:
             if item_id not in self.users[cid]["notified_grades"]:
                 self.users[cid]["notified_grades"].append(item_id)
                 self.save()
+
+    def is_user_solving(self, chat_id: Any) -> bool:
+        """Checks whether a quiz solve process is currently active for this user."""
+        with self._lock:
+            return str(chat_id) in self._active_solvers
+
+    def acquire_solve_lock(self, chat_id: Any) -> bool:
+        """Atomically acquires the solving lock for the student. Returns True if acquired, False if already solving."""
+        with self._lock:
+            cid = str(chat_id)
+            if cid in self._active_solvers:
+                return False
+            self._active_solvers.add(cid)
+            return True
+
+    def release_solve_lock(self, chat_id: Any):
+        """Releases the solving lock for the student."""
+        with self._lock:
+            self._active_solvers.discard(str(chat_id))
+

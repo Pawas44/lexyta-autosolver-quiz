@@ -112,6 +112,29 @@ class TestTelegramControls(unittest.TestCase):
         self.server.handle_message({"chat": {"id": 12345}, "text": "/autosolve on"})
         self.assertTrue(self.user_manager.get_user(12345).get("auto_solve"))
 
+    def test_solve_lock_acquire_and_release(self):
+        self.assertFalse(self.user_manager.is_user_solving(12345))
+        self.assertTrue(self.user_manager.acquire_solve_lock(12345))
+        self.assertTrue(self.user_manager.is_user_solving(12345))
+        # Second acquire must fail
+        self.assertFalse(self.user_manager.acquire_solve_lock(12345))
+        # Release lock
+        self.user_manager.release_solve_lock(12345)
+        self.assertFalse(self.user_manager.is_user_solving(12345))
+        # Can acquire again
+        self.assertTrue(self.user_manager.acquire_solve_lock(12345))
+        self.user_manager.release_solve_lock(12345)
+
+    @patch.object(TelegramServer, "send_message")
+    def test_duplicate_solve_command_blocked(self, mock_send):
+        self.user_manager.acquire_solve_lock(12345)
+        self.server.handle_message({"chat": {"id": 12345}, "text": "/solve"})
+        mock_send.assert_called_with(
+            12345,
+            "⚠️ <b>Quiz solving already chal raha hai!</b>\n\nUpar progress message dekhein. Jab tak wo pura na ho tab tak dobara command na bhejein."
+        )
+        self.user_manager.release_solve_lock(12345)
+
     def tearDown(self):
         import os
         if os.path.exists("data/test_controls_state.json"):

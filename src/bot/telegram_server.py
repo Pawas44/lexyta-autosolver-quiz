@@ -297,6 +297,12 @@ class TelegramServer:
         elif data == "btn_scan":
             if query_id:
                 self.answer_callback_query(query_id, "🔍 Scanning LMS...")
+            if self.user_manager.is_user_solving(chat_id):
+                self.send_message(
+                    chat_id,
+                    "⚠️ <b>Quiz solving already chal raha hai!</b>\n\nUpar progress message dekhein. Jab tak wo pura na ho tab tak dobara scan na karein."
+                )
+                return
             self.send_message(chat_id, "🔍 <i>LMS scan shuru ho raha hai... Please wait...</i>")
             import threading
             def _do_btn_scan():
@@ -418,6 +424,12 @@ class TelegramServer:
                 return
 
             elif cmd in ["/solve", "/quizsolve"]:
+                if self.user_manager.is_user_solving(chat_id):
+                    self.send_message(
+                        chat_id,
+                        "⚠️ <b>Quiz solving already chal raha hai!</b>\n\nUpar progress message dekhein. Jab tak wo pura na ho tab tak dobara command na bhejein."
+                    )
+                    return
                 import threading
                 threading.Thread(target=self.handle_solve, args=(chat_id,), daemon=True).start()
                 return
@@ -745,8 +757,16 @@ class TelegramServer:
 
     def handle_solve(self, chat_id: int):
         """Immediately solves all pending quizzes with live progress bar in Telegram."""
+        if not self.user_manager.acquire_solve_lock(chat_id):
+            self.send_message(
+                chat_id,
+                "⚠️ <b>Quiz solving already chal raha hai!</b>\n\nUpar progress message dekhein. Jab tak wo pura na ho tab tak dobara command na bhejein."
+            )
+            return
+
         user = self.user_manager.get_user(chat_id)
         if not user or not user.get("email"):
+            self.user_manager.release_solve_lock(chat_id)
             self.send_message(chat_id, "⚠️ Pehle apna account link karein: /start")
             return
 
@@ -862,6 +882,8 @@ class TelegramServer:
         except Exception as e:
             logger.error(f"Error handling /solve: {e}", exc_info=True)
             self.send_message(chat_id, f"⚠️ Solve karte waqt error: {e}")
+        finally:
+            self.user_manager.release_solve_lock(chat_id)
 
     def handle_assignments(self, chat_id: int):
         """Shows open assignments that haven't been submitted and deadline has not passed."""
