@@ -4,6 +4,7 @@ Uses Google Gemini API to analyze questions, reasoning through options, and sele
 Supports automatic model fallback and strict JSON schema parsing.
 """
 
+import time
 import re
 import html
 import json
