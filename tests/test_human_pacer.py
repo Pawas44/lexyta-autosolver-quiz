@@ -15,6 +15,25 @@ class TestHumanPacer(unittest.TestCase):
         self.assertGreaterEqual(target, 8 * 60)
         self.assertLessEqual(target, 10.5 * 60)
 
+    def test_34_hour_extended_window(self):
+        # Teacher gives 34 hours (2040 min) for 10 questions.
+        # Must NOT wait 15+ hours! Must use realistic question-based pacing (~5 to 8 min).
+        target = calculate_target_duration_seconds(time_limit_minutes=2040, total_questions=10)
+        self.assertGreaterEqual(target, 300)   # >= 5 minutes
+        self.assertLessEqual(target, 500)      # <= 8.3 minutes
+
+    def test_2_day_extended_window(self):
+        # Teacher gives 48 hours (2880 min) for 15 questions.
+        target = calculate_target_duration_seconds(time_limit_minutes=2880, total_questions=15)
+        self.assertGreaterEqual(target, 450)   # >= 7.5 minutes
+        self.assertLessEqual(target, 700)      # <= 11.6 minutes
+
+    def test_60_min_few_questions_extended(self):
+        # 60 min limit for only 5 questions (12 min/q). Extended window -> ~3 to 4.5 min.
+        target = calculate_target_duration_seconds(time_limit_minutes=60, total_questions=5)
+        self.assertGreaterEqual(target, 160)   # >= 2.6 minutes
+        self.assertLessEqual(target, 280)      # <= 4.6 minutes
+
     def test_deadline_safety_cap(self):
         # If due date is only 3 minutes (180s) away, target must not exceed 120s
         near_due = (datetime.now(timezone.utc) + timedelta(seconds=180)).isoformat()
