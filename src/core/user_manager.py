@@ -21,7 +21,7 @@ class UserManager:
     def __init__(self, file_path: str = "data/users.json"):
         self.file_path = file_path
         self._ensure_dir()
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._github = GitHubStateSync()
         self._save_counter = 0  # Batch counter
         self._dirty = False

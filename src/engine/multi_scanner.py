@@ -241,20 +241,33 @@ class MultiScanner:
         return {"quizzes": quizzes_processed, "assignments": assignments_notified}
 
     def scan_all_active_users(self, dry_run: bool = False):
-        """Scans all registered active users."""
+        """Scans all registered active users concurrently in parallel threads."""
         users = self.user_manager.get_all_active_users()
-        logger.info(f"Starting multi-user scan for {len(users)} registered students...")
+        logger.info(f"Starting multi-user concurrent scan for {len(users)} registered students...")
 
+        allowed_users = []
+        for u in users:
+            cid = u.get("chat_id")
+            if self.access_controller and not self.access_controller.is_allowed(cid):
+                logger.info(f"Skipping student {u.get('email')} (chat_id {cid} is not in allowed list)")
+                continue
+            allowed_users.append(u)
+
+        if not allowed_users:
+            return
+
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        max_workers = min(len(allowed_users), 10)
         try:
-            for u in users:
-                cid = u.get("chat_id")
-                if self.access_controller and not self.access_controller.is_allowed(cid):
-                    logger.info(f"Skipping student {u.get('email')} (chat_id {cid} is not in allowed list)")
-                    continue
-                try:
-                    self.scan_user(u, dry_run=dry_run)
-                except Exception as e:
-                    logger.error(f"Error scanning student {u.get('email')}: {e}")
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {executor.submit(self.scan_user, u, dry_run): u for u in allowed_users}
+                for future in as_completed(futures):
+                    u = futures[future]
+                    try:
+                        future.result()
+                    except Exception as e:
+                        logger.error(f"Error scanning student {u.get('email')}: {e}")
         finally:
             # Batch flush dirty state to cloud in a single commit, preventing deploy loops
             try:

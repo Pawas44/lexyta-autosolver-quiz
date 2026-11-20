@@ -298,15 +298,18 @@ class TelegramServer:
             if query_id:
                 self.answer_callback_query(query_id, "🔍 Scanning LMS...")
             self.send_message(chat_id, "🔍 <i>LMS scan shuru ho raha hai... Please wait...</i>")
-            if self.on_demand_scanner:
-                res = self.on_demand_scanner(chat_id)
-                self.send_message(
-                    chat_id,
-                    f"✅ Scan Complete!\nQuizzes: {res.get('quizzes', 0)}\nAssignments: {res.get('assignments', 0)}",
-                    reply_markup=self._get_control_keyboard(chat_id)
-                )
-            else:
-                self.send_message(chat_id, "✅ On-demand scan queued.", reply_markup=self._get_control_keyboard(chat_id))
+            import threading
+            def _do_btn_scan():
+                if self.on_demand_scanner:
+                    res = self.on_demand_scanner(chat_id)
+                    self.send_message(
+                        chat_id,
+                        f"✅ Scan Complete!\nQuizzes: {res.get('quizzes', 0)}\nAssignments: {res.get('assignments', 0)}",
+                        reply_markup=self._get_control_keyboard(chat_id)
+                    )
+                else:
+                    self.send_message(chat_id, "✅ On-demand scan queued.", reply_markup=self._get_control_keyboard(chat_id))
+            threading.Thread(target=_do_btn_scan, daemon=True).start()
 
         elif data == "btn_quizzes":
             if query_id:
@@ -415,7 +418,8 @@ class TelegramServer:
                 return
 
             elif cmd in ["/solve", "/quizsolve"]:
-                self.handle_solve(chat_id)
+                import threading
+                threading.Thread(target=self.handle_solve, args=(chat_id,), daemon=True).start()
                 return
 
             elif cmd in ["/assignments", "/assignment", "/pending"]:
@@ -468,11 +472,14 @@ class TelegramServer:
                     self.send_message(chat_id, "⚠️ Aapka koi account link nahi hai. Type karein /start.")
                     return
                 self.send_message(chat_id, "🔍 <i>LMS scan shuru ho raha hai... Please wait...</i>")
-                if self.on_demand_scanner:
-                    res = self.on_demand_scanner(chat_id)
-                    self.send_message(chat_id, f"✅ Scan Complete!\nQuizzes solved: {res.get('quizzes', 0)}\nAssignments alerted: {res.get('assignments', 0)}", reply_markup=self._get_control_keyboard(chat_id))
-                else:
-                    self.send_message(chat_id, "✅ On-demand scan queued. Background runner will check within a few moments.", reply_markup=self._get_control_keyboard(chat_id))
+                import threading
+                def _do_scan():
+                    if self.on_demand_scanner:
+                        res = self.on_demand_scanner(chat_id)
+                        self.send_message(chat_id, f"✅ Scan Complete!\nQuizzes solved: {res.get('quizzes', 0)}\nAssignments alerted: {res.get('assignments', 0)}", reply_markup=self._get_control_keyboard(chat_id))
+                    else:
+                        self.send_message(chat_id, "✅ On-demand scan queued. Background runner will check within a few moments.", reply_markup=self._get_control_keyboard(chat_id))
+                threading.Thread(target=_do_scan, daemon=True).start()
                 return
 
             elif cmd in ["/stop", "/pause", "/off", "/disable"]:
