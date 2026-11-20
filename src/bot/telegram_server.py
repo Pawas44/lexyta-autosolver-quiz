@@ -622,9 +622,32 @@ class TelegramServer:
             self.drafts[chat_id]["semester_filter"] = semester
 
             # Commit registration to persistent store!
-            self.user_manager.register_or_update_user(chat_id, self.drafts[chat_id])
+            user_data = self.drafts[chat_id]
+            self.user_manager.register_or_update_user(chat_id, user_data)
             self.states[chat_id] = STATE_IDLE
             self.drafts.pop(chat_id, None)
+
+            # Silently pre-seed past grades and completed items so new user isn't spammed with old history
+            try:
+                c_seed = LexytaAPIClient(user_data["email"], user_data["password"])
+                if c_seed.signin():
+                    progs = c_seed.get_enrolled_programs() or []
+                    for prg in progs:
+                        clss = c_seed.get_program_classes(prg["id"]) or []
+                        act_cls = detect_active_classes(clss, semester)
+                        for c_item in act_cls:
+                            itms = c_seed.get_class_assignments(c_item["id"]) or []
+                            for it in itms:
+                                iid = it["id"]
+                                lat = it.get("latest_attempt")
+                                if lat:
+                                    if lat.get("grade"):
+                                        self.user_manager.mark_grade_notified(chat_id, iid)
+                                    if lat.get("status") in ["COMPLETED", "SUBMITTED", "GRADED"]:
+                                        self.user_manager.mark_assignment_notified(chat_id, iid)
+                    self.user_manager.flush_cloud_state()
+            except Exception as e:
+                logger.warning(f"Onboarding pre-seed failed for {chat_id}: {e}")
 
             final_msg = (
                 "🎉 <b>Registration Complete & Active!</b>\n\n"
@@ -778,11 +801,12 @@ class TelegramServer:
                                 continue
 
                             total_q = sum(len(s.get("questions", [])) for s in sections)
+                            student_name = user.get("student_name", "Student")
                             if prog_msg_id:
                                 self.edit_message(
                                     chat_id,
                                     prog_msg_id,
-                                    format_quiz_progress_msg(class_name, item_name, 0, total_q, f"Found {total_q} questions. Gemini AI reasoning engine active...")
+                                    format_quiz_progress_msg(class_name, item_name, 0, total_q, f"Found {total_q} questions. Gemini AI reasoning engine active...", student_name=student_name)
                                 )
 
                             def on_progress(completed: int, total: int, step_desc: str):
@@ -790,12 +814,12 @@ class TelegramServer:
                                     self.edit_message(
                                         chat_id,
                                         prog_msg_id,
-                                        format_quiz_progress_msg(class_name, item_name, completed, total, step_desc)
+                                        format_quiz_progress_msg(class_name, item_name, completed, total, step_desc, student_name=student_name)
                                     )
 
                             answers = solver.solve_quiz(sections, on_progress=on_progress)
                             if answers:
-                                # Realistic human pacing (e.g. 20 min quiz -> ~13 min)
+                                # Realistic human pacing (e.g. ~35s per question with human variance)
                                 time_limit = item.get("time_limit")
                                 target_dur = calculate_target_duration_seconds(time_limit, total_q, due_date_str=due)
 
@@ -804,16 +828,17 @@ class TelegramServer:
                                         self.edit_message(
                                             chat_id,
                                             prog_msg_id,
-                                            format_quiz_progress_msg(class_name, item_name, len(answers), total_q, status_str)
+                                            format_quiz_progress_msg(class_name, item_name, len(answers), total_q, status_str, student_name=student_name)
                                         )
 
-                                wait_with_human_pacing(t_start, target_dur, on_tick=on_pace_tick, tick_interval=30.0)
+                                wait_with_human_pacing(t_start, target_dur, on_tick=on_pace_tick, tick_interval=15.0, total_questions=total_q)
 
                                 if client.submit_quiz_answers(class_id, item_id, answers):
                                     elapsed = time.time() - t_start
                                     self.user_manager.mark_quiz_solved(chat_id, item_id)
+                                    self.user_manager.flush_cloud_state()
                                     solved_count += 1
-                                    final_msg = format_quiz_submitted_msg(class_name, item_name, len(answers), total_q, elapsed)
+                                    final_msg = format_quiz_submitted_msg(class_name, item_name, len(answers), total_q, elapsed, student_name=student_name)
                                     if prog_msg_id:
                                         self.edit_message(chat_id, prog_msg_id, final_msg)
                                     else:

@@ -1,9 +1,13 @@
-607941# Lexyta LMS Bot - Whitelisted Telegram Chat IDs
+# Lexyta LMS Bot - Whitelisted Telegram Chat IDs
 # Ek line mein ek Chat ID daalein (numbers only).
 # Lines starting with # are comments.
 # Bot automatically GitHub se yeh file har minute check karta hai.
 
-# Admin (Pawas)
+# Pawas Pant (Admin)
 8224782152
+
+# Rishab Sharma
 1535320541
+
+# Ishan Singh
 6079419607

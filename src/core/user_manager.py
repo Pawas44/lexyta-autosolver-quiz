@@ -23,7 +23,8 @@ class UserManager:
         self._ensure_dir()
         self._lock = threading.Lock()
         self._github = GitHubStateSync()
-        self._save_counter = 0  # Batch GitHub writes (every 3 local saves)
+        self._save_counter = 0  # Batch counter
+        self._dirty = False
 
         # Load: try GitHub first, then local fallback
         cloud_state = self._github.fetch_state()
@@ -62,27 +63,38 @@ class UserManager:
             logger.error(f"Error saving users file: {e}")
 
     def save(self):
-        """Save locally always, sync to GitHub every 3 saves (batched)."""
+        """Save locally always, mark state as dirty for single clean batch cloud flush."""
         with self._lock:
             self._save_local()
-            self._save_counter += 1
-            if self._save_counter >= 3:
-                self._save_counter = 0
-                self._sync_to_github()
+            self._dirty = True
 
-    def force_sync(self):
-        """Force immediate sync to GitHub (call after important changes like new user)."""
+    def flush_cloud_state(self) -> bool:
+        """Pushes dirty state to GitHub in a single clean batch commit, avoiding deploy loops."""
+        with self._lock:
+            if getattr(self, "_dirty", False):
+                self._save_local()
+                if self._sync_to_github():
+                    self._dirty = False
+                    return True
+            return False
+
+    def force_sync(self) -> bool:
+        """Force immediate sync to GitHub (call after important changes like new user or active toggles)."""
         with self._lock:
             self._save_local()
-            self._sync_to_github()
+            res = self._sync_to_github()
+            if res:
+                self._dirty = False
+            return res
 
-    def _sync_to_github(self):
+    def _sync_to_github(self) -> bool:
         """Push current state to GitHub."""
         try:
             cloud_state = {"users": self.users, "synced_at": datetime.now(timezone.utc).isoformat()}
-            self._github.save_state(cloud_state)
+            return self._github.save_state(cloud_state)
         except Exception as e:
             logger.error(f"GitHub sync failed: {e}")
+            return False
 
     def get_user(self, chat_id: Any) -> Optional[Dict[str, Any]]:
         return self.users.get(str(chat_id))

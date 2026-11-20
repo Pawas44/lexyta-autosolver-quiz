@@ -98,11 +98,13 @@ def render_progress_bar(completed: int, total: int, width: int = 10) -> str:
     pct = int(round(fraction * 100))
     return f"[{bar}] {pct}% ({completed}/{total})"
 
-def format_quiz_progress_msg(subject: str, quiz_name: str, completed: int, total: int, step_desc: str) -> str:
+def format_quiz_progress_msg(subject: str, quiz_name: str, completed: int, total: int, step_desc: str, student_name: Optional[str] = None) -> str:
     """Formats real-time progress update for Telegram."""
     bar = render_progress_bar(completed, total)
+    header = f"👤 <b>Student:</b> {student_name}\n" if student_name else ""
     return (
         f"⏳ <b>LMS Quiz In Progress...</b>\n\n"
+        f"{header}"
         f"📚 <b>Subject:</b> {subject}\n"
         f"📝 <b>Quiz:</b> {quiz_name}\n"
         f"📊 <b>Progress:</b> {bar}\n"
@@ -110,13 +112,15 @@ def format_quiz_progress_msg(subject: str, quiz_name: str, completed: int, total
         f"🌐 <i>Autonomous Gemini AI Engine</i>"
     )
 
-def format_quiz_submitted_msg(subject: str, quiz_name: str, answered: int, total: int, elapsed_sec: float) -> str:
+def format_quiz_submitted_msg(subject: str, quiz_name: str, answered: int, total: int, elapsed_sec: float, student_name: Optional[str] = None) -> str:
     """Formats final submission confirmation for Telegram."""
     s = int(elapsed_sec)
     m, s = divmod(s, 60)
     dur_str = f"{m}m {s}s" if m > 0 else f"{s}s"
+    header = f"👤 <b>Student:</b> {student_name}\n" if student_name else ""
     return (
         f"🎉 <b>LMS Quiz Solved & Submitted!</b>\n\n"
+        f"{header}"
         f"📚 <b>Subject:</b> {subject}\n"
         f"📝 <b>Quiz:</b> {quiz_name}\n"
         f"✅ <b>Answered:</b> {answered} / {total} questions (100%)\n"

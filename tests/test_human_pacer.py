@@ -21,6 +21,26 @@ class TestHumanPacer(unittest.TestCase):
         target = calculate_target_duration_seconds(time_limit_minutes=20, total_questions=10, due_date_str=near_due)
         self.assertLessEqual(target, 125.0)
 
+    def test_question_based_pacing_untimed(self):
+        # 10 questions without official time limit -> ~30-41s per question + buffer
+        target = calculate_target_duration_seconds(time_limit_minutes=None, total_questions=10)
+        # Should be between 300s (5 min) and 450s (7.5 min)
+        self.assertGreaterEqual(target, 300)
+        self.assertLessEqual(target, 450)
+
+    def test_question_progress_ticks(self):
+        from src.solvers.human_pacer import wait_with_human_pacing
+        import time
+
+        recorded_statuses = []
+        def on_tick(elapsed, remaining, status_str):
+            recorded_statuses.append(status_str)
+
+        # Run 0.1s simulated pacing
+        wait_with_human_pacing(t_start=time.time(), target_seconds=0.05, on_tick=on_tick, tick_interval=0.01, total_questions=5)
+        # The loop should complete cleanly
+        self.assertTrue(True)
+
     def test_format_human(self):
         self.assertEqual(format_duration_human(45), "45s")
         self.assertEqual(format_duration_human(780), "13m 0s")

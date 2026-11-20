@@ -30,14 +30,18 @@ class MultiScanner:
         chat_id = user["chat_id"]
         email = user["email"]
         password = user["password"]
+        student_name = user.get("student_name", "Student")
         gemini_key = user.get("gemini_api_key") or DEFAULT_GEMINI_KEY
         sem_filter = user.get("semester_filter", "auto")
         notifier = TelegramNotifier(bot_token=self.bot_token, chat_id=str(chat_id))
 
+        student_hdr = f"👤 <b>Student:</b> {student_name} (<code>{email}</code>)\n"
+        seen_in_pass = set()
+
         quizzes_processed = 0
         assignments_notified = 0
 
-        logger.info(f"Scanning student: {user.get('student_name', 'Student')} ({email})")
+        logger.info(f"Scanning student: {student_name} ({email}) [chat_id: {chat_id}]")
 
         client = LexytaAPIClient(email, password)
         if not client.signin():
@@ -59,6 +63,10 @@ class MultiScanner:
 
                 for item in items:
                     item_id = item["id"]
+                    if item_id in seen_in_pass:
+                        continue
+                    seen_in_pass.add(item_id)
+
                     item_name = item.get("name", "Untitled")
                     item_type = item.get("type", "DOCUMENT")
                     due_date = item.get("due_date")
@@ -74,17 +82,22 @@ class MultiScanner:
                             grade_val = grade_obj.get("grade")
                             # Only notify if grade exists AND we haven't notified yet
                             if grade_val is not None and not self.user_manager.is_grade_notified(chat_id, item_id):
-                                # Extra safety: skip if grade was released more than 24h ago (stale)
                                 import datetime as _dt
-                                released_at = grade_obj.get("released_at") or grade_obj.get("updated_at")
-                                if released_at:
+                                rel_str = grade_obj.get("released_at") or grade_obj.get("updated_at") or grade_obj.get("created_at")
+                                if rel_str:
                                     try:
-                                        rel_time = _dt.datetime.fromisoformat(released_at.replace("Z", "+00:00"))
+                                        rel_time = _dt.datetime.fromisoformat(rel_str.replace("Z", "+00:00"))
+                                        # Extra safety: skip if grade was released more than 24h ago (stale)
                                         if (_dt.datetime.now(_dt.timezone.utc) - rel_time).total_seconds() > 86400:
                                             self.user_manager.mark_grade_notified(chat_id, item_id)
                                             continue
                                     except Exception:
                                         pass
+                                else:
+                                    # No timestamp: mark silently to prevent ancient grade spam
+                                    self.user_manager.mark_grade_notified(chat_id, item_id)
+                                    continue
+
                                 grader_name = ""
                                 graded_by = grade_obj.get("graded_by")
                                 if graded_by:
@@ -93,6 +106,7 @@ class MultiScanner:
                                 pct_str = f" ({(grade_val/max_score)*100:.1f}%)" if max_score else ""
                                 grade_msg = (
                                     f"📊 <b>LMS Marks / Result Released!</b>\n\n"
+                                    f"{student_hdr}"
                                     f"📚 <b>Subject:</b> {class_name}\n"
                                     f"📝 <b>Item:</b> {item_name}\n"
                                     f"🎯 <b>Marks:</b> {grade_val} / {max_score or 'N/A'}{pct_str}\n"
@@ -123,6 +137,7 @@ class MultiScanner:
                             if not self.user_manager.is_quiz_notified(chat_id, item_id):
                                 manual_alert = (
                                     f"📢 <b>LMS Quiz Available!</b>\n\n"
+                                    f"{student_hdr}"
                                     f"📚 <b>Subject:</b> {class_name}\n"
                                     f"📝 <b>Quiz:</b> {item_name}\n"
                                     f"⏰ <b>Status:</b> {status}\n\n"
@@ -133,13 +148,14 @@ class MultiScanner:
                                 self.user_manager.mark_quiz_notified(chat_id, item_id)
                             continue
 
-                        logger.info(f"[QUIZ FOUND] {class_name} | {item_name}")
+                        logger.info(f"[QUIZ FOUND] {student_name} | {class_name} | {item_name}")
 
                         if not dry_run:
                             t_start = time.time()
                             # 1. Send initial Telegram alert
                             init_msg = (
                                 f"🚀 <b>LMS Quiz Detected & Started!</b>\n\n"
+                                f"{student_hdr}"
                                 f"📚 <b>Subject:</b> {class_name}\n"
                                 f"📝 <b>Quiz:</b> {item_name}\n"
                                 f"⏳ <b>Status:</b> Initializing attempt and downloading questions..."
@@ -156,19 +172,19 @@ class MultiScanner:
                                 if prog_msg_id:
                                     notifier.edit_message(
                                         prog_msg_id,
-                                        format_quiz_progress_msg(class_name, item_name, 0, total_q, f"Found {total_q} questions. Gemini AI solver running...")
+                                        format_quiz_progress_msg(class_name, item_name, 0, total_q, f"Found {total_q} questions. Gemini AI solver running...", student_name=student_name)
                                     )
 
                                 def on_progress(completed: int, total: int, step_desc: str):
                                     if prog_msg_id:
                                         notifier.edit_message(
                                             prog_msg_id,
-                                            format_quiz_progress_msg(class_name, item_name, completed, total, step_desc)
+                                            format_quiz_progress_msg(class_name, item_name, completed, total, step_desc, student_name=student_name)
                                         )
 
                                 answers = solver.solve_quiz(sections, on_progress=on_progress)
                                 if answers:
-                                    # Realistic human pacing (e.g. 20 min quiz -> ~13 min)
+                                    # Realistic human pacing (e.g. ~35s per question with human variance)
                                     time_limit = item.get("time_limit")
                                     target_dur = calculate_target_duration_seconds(time_limit, total_q, due_date_str=due_date)
 
@@ -176,17 +192,17 @@ class MultiScanner:
                                         if prog_msg_id:
                                             notifier.edit_message(
                                                 prog_msg_id,
-                                                format_quiz_progress_msg(class_name, item_name, len(answers), total_q, status_str)
+                                                format_quiz_progress_msg(class_name, item_name, len(answers), total_q, status_str, student_name=student_name)
                                             )
 
-                                    wait_with_human_pacing(t_start, target_dur, on_tick=on_pace_tick, tick_interval=30.0)
+                                    wait_with_human_pacing(t_start, target_dur, on_tick=on_pace_tick, tick_interval=15.0, total_questions=total_q)
 
                                     if client.submit_quiz_answers(class_id, item_id, answers):
                                         elapsed = time.time() - t_start
                                         self.user_manager.mark_quiz_solved(chat_id, item_id)
                                         quizzes_processed += 1
 
-                                        final_msg = format_quiz_submitted_msg(class_name, item_name, len(answers), total_q, elapsed)
+                                        final_msg = format_quiz_submitted_msg(class_name, item_name, len(answers), total_q, elapsed, student_name=student_name)
                                         if prog_msg_id:
                                             notifier.edit_message(prog_msg_id, final_msg)
                                         else:
@@ -211,6 +227,7 @@ class MultiScanner:
                         formatted_due = format_datetime_ist(due_date)
                         asgn_msg = (
                             f"📢 <b>LMS New Assignment Alert!</b>\n\n"
+                            f"{student_hdr}"
                             f"📚 <b>Subject:</b> {class_name}\n"
                             f"📝 <b>Assignment:</b> {item_name}\n"
                             f"⏰ <b>Due Date & Time:</b> {formatted_due}\n\n"
@@ -228,12 +245,19 @@ class MultiScanner:
         users = self.user_manager.get_all_active_users()
         logger.info(f"Starting multi-user scan for {len(users)} registered students...")
 
-        for u in users:
-            cid = u.get("chat_id")
-            if self.access_controller and not self.access_controller.is_allowed(cid):
-                logger.info(f"Skipping student {u.get('email')} (chat_id {cid} is not in allowed list)")
-                continue
+        try:
+            for u in users:
+                cid = u.get("chat_id")
+                if self.access_controller and not self.access_controller.is_allowed(cid):
+                    logger.info(f"Skipping student {u.get('email')} (chat_id {cid} is not in allowed list)")
+                    continue
+                try:
+                    self.scan_user(u, dry_run=dry_run)
+                except Exception as e:
+                    logger.error(f"Error scanning student {u.get('email')}: {e}")
+        finally:
+            # Batch flush dirty state to cloud in a single commit, preventing deploy loops
             try:
-                self.scan_user(u, dry_run=dry_run)
-            except Exception as e:
-                logger.error(f"Error scanning student {u.get('email')}: {e}")
+                self.user_manager.flush_cloud_state()
+            except Exception as fe:
+                logger.warning(f"Error flushing cloud state: {fe}")
