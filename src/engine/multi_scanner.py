@@ -157,63 +157,63 @@ class MultiScanner:
                             try:
                                 t_start = time.time()
                                 # 1. Send initial Telegram alert
-                            init_msg = (
-                                f"🚀 <b>LMS Quiz Detected & Started!</b>\n\n"
-                                f"{student_hdr}"
-                                f"📚 <b>Subject:</b> {class_name}\n"
-                                f"📝 <b>Quiz:</b> {item_name}\n"
-                                f"⏳ <b>Status:</b> Initializing attempt and downloading questions..."
-                            )
-                            prog_msg_id = notifier.send_message(init_msg)
-
-                            # 2. Start attempt
-                            if status == "NOT_ATTEMPTED":
-                                client.start_quiz_attempt(class_id, item_id)
-
-                            sections = client.get_quiz_questions(class_id, item_id)
-                            if sections:
-                                total_q = sum(len(s.get("questions", [])) for s in sections)
-                                if prog_msg_id:
-                                    notifier.edit_message(
-                                        prog_msg_id,
-                                        format_quiz_progress_msg(class_name, item_name, 0, total_q, f"Found {total_q} questions. Gemini AI solver running...", student_name=student_name)
-                                    )
-
-                                def on_progress(completed: int, total: int, step_desc: str):
+                                init_msg = (
+                                    f"🚀 <b>LMS Quiz Detected & Started!</b>\n\n"
+                                    f"{student_hdr}"
+                                    f"📚 <b>Subject:</b> {class_name}\n"
+                                    f"📝 <b>Quiz:</b> {item_name}\n"
+                                    f"⏳ <b>Status:</b> Initializing attempt and downloading questions..."
+                                )
+                                prog_msg_id = notifier.send_message(init_msg)
+    
+                                # 2. Start attempt
+                                if status == "NOT_ATTEMPTED":
+                                    client.start_quiz_attempt(class_id, item_id)
+    
+                                sections = client.get_quiz_questions(class_id, item_id)
+                                if sections:
+                                    total_q = sum(len(s.get("questions", [])) for s in sections)
                                     if prog_msg_id:
                                         notifier.edit_message(
                                             prog_msg_id,
-                                            format_quiz_progress_msg(class_name, item_name, completed, total, step_desc, student_name=student_name)
+                                            format_quiz_progress_msg(class_name, item_name, 0, total_q, f"Found {total_q} questions. Gemini AI solver running...", student_name=student_name)
                                         )
-
-                                answers = solver.solve_quiz(sections, on_progress=on_progress)
-                                if answers:
-                                    # Realistic human pacing (e.g. ~35s per question with human variance)
-                                    time_limit = item.get("time_limit")
-                                    target_dur = calculate_target_duration_seconds(time_limit, total_q, due_date_str=due_date)
-
-                                    def on_pace_tick(elapsed_sec: float, remaining_sec: float, status_str: str):
+    
+                                    def on_progress(completed: int, total: int, step_desc: str):
                                         if prog_msg_id:
                                             notifier.edit_message(
                                                 prog_msg_id,
-                                                format_quiz_progress_msg(class_name, item_name, len(answers), total_q, status_str, student_name=student_name)
+                                                format_quiz_progress_msg(class_name, item_name, completed, total, step_desc, student_name=student_name)
                                             )
-
-                                    wait_with_human_pacing(t_start, target_dur, on_tick=on_pace_tick, tick_interval=15.0, total_questions=total_q)
-
-                                    if client.submit_quiz_answers(class_id, item_id, answers):
-                                        elapsed = time.time() - t_start
-                                        self.user_manager.mark_quiz_solved(chat_id, item_id)
-                                        quizzes_processed += 1
-
-                                        final_msg = format_quiz_submitted_msg(class_name, item_name, len(answers), total_q, elapsed, student_name=student_name)
-                                        if prog_msg_id:
-                                            notifier.edit_message(prog_msg_id, final_msg)
+    
+                                    answers = solver.solve_quiz(sections, on_progress=on_progress)
+                                    if answers:
+                                        # Realistic human pacing (e.g. ~35s per question with human variance)
+                                        time_limit = item.get("time_limit")
+                                        target_dur = calculate_target_duration_seconds(time_limit, total_q, due_date_str=due_date)
+    
+                                        def on_pace_tick(elapsed_sec: float, remaining_sec: float, status_str: str):
+                                            if prog_msg_id:
+                                                notifier.edit_message(
+                                                    prog_msg_id,
+                                                    format_quiz_progress_msg(class_name, item_name, len(answers), total_q, status_str, student_name=student_name)
+                                                )
+    
+                                        wait_with_human_pacing(t_start, target_dur, on_tick=on_pace_tick, tick_interval=15.0, total_questions=total_q)
+    
+                                        if client.submit_quiz_answers(class_id, item_id, answers):
+                                            elapsed = time.time() - t_start
+                                            self.user_manager.mark_quiz_solved(chat_id, item_id)
+                                            quizzes_processed += 1
+    
+                                            final_msg = format_quiz_submitted_msg(class_name, item_name, len(answers), total_q, elapsed, student_name=student_name)
+                                            if prog_msg_id:
+                                                notifier.edit_message(prog_msg_id, final_msg)
+                                            else:
+                                                notifier.send(final_msg)
                                         else:
-                                            notifier.send(final_msg)
-                                    else:
-                                        if prog_msg_id:
-                                            notifier.edit_message(prog_msg_id, f"❌ Submission failed for <b>{item_name}</b>.")
+                                            if prog_msg_id:
+                                                notifier.edit_message(prog_msg_id, f"❌ Submission failed for <b>{item_name}</b>.")
                             finally:
                                 self.user_manager.release_solve_lock(chat_id)
 
