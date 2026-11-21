@@ -19,12 +19,12 @@ def parse_olympiad_input(raw_input: str) -> Dict[str, Optional[str]]:
     Parses any Olympiad URL or text input into structured components:
     - slug
     - access_code
-    - invitation_code (token)
+    - invitation_code (token - supports full JWT with dots)
     - key (student key)
 
     Examples supported:
     - https://olympiad.lexyta.com/8uicOlC454?access_code=QsjLttvz
-    - https://olympiad.lexyta.com/8uicOlC454?invitation_code=TOKEN123
+    - https://olympiad.lexyta.com/8uicOlC454?invitation_code=eyJhbGci...
     - https://olympiad.lexyta.com/8uicOlC454 key=MYKEY
     - 8uicOlC454 access_code=QsjLttvz
     """
@@ -37,45 +37,48 @@ def parse_olympiad_input(raw_input: str) -> Dict[str, Optional[str]]:
 
     text = raw_input.strip()
 
-    # Check for direct key= or access_code= in string
-    key_match = re.search(r'\bkey=([a-zA-Z0-9_-]+)', text, re.I)
-    if key_match:
-        result["key"] = key_match.group(1).strip()
-
-    ac_match = re.search(r'\baccess_code=([a-zA-Z0-9_-]+)', text, re.I)
-    if ac_match:
-        result["access_code"] = ac_match.group(1).strip()
-
-    inv_match = re.search(r'\b(?:invitation_code|auth_token|token)=([a-zA-Z0-9_-]+)', text, re.I)
-    if inv_match:
-        result["invitation_code"] = inv_match.group(1).strip()
-
-    # If it's a URL
-    if "olympiad.lexyta.com" in text or "http" in text or "/" in text:
-        # Extract the URL portion
-        url_match = re.search(r'https?://[^\s]+', text)
-        target_url = url_match.group(0) if url_match else text
+    # 1. First, check if text contains an HTTP URL
+    url_match = re.search(r'https?://[^\s]+', text)
+    if url_match:
+        target_url = url_match.group(0).strip()
         parsed = urlparse(target_url)
 
         # Path: /8uicOlC454 or /8uicOlC454/
         path_parts = [p for p in parsed.path.split("/") if p]
         if path_parts:
-            # Slug is usually the first path component
             result["slug"] = path_parts[0]
 
-        # Query parameters
+        # Query parameters (parse_qs preserves full tokens including dots in JWTs)
         qs = parse_qs(parsed.query)
-        if "access_code" in qs and not result["access_code"]:
-            result["access_code"] = qs["access_code"][0]
-        if "invitation_code" in qs and not result["invitation_code"]:
+        if "invitation_code" in qs:
             result["invitation_code"] = qs["invitation_code"][0]
-        if "token" in qs and not result["invitation_code"]:
+        elif "token" in qs:
             result["invitation_code"] = qs["token"][0]
-        if "key" in qs and not result["key"]:
+
+        if "access_code" in qs:
+            result["access_code"] = qs["access_code"][0]
+        if "key" in qs:
             result["key"] = qs["key"][0]
-    else:
-        # Standalone slug or token
-        tokens = text.split()
+
+    # 2. Check for explicit key= or access_code= or invitation_code= in text (including dots)
+    if not result["key"]:
+        key_match = re.search(r'(?:\b|&|\s)key=([^\s&]+)', text, re.I)
+        if key_match:
+            result["key"] = key_match.group(1).strip()
+
+    if not result["access_code"]:
+        ac_match = re.search(r'(?:\b|&|\s)access_code=([^\s&]+)', text, re.I)
+        if ac_match:
+            result["access_code"] = ac_match.group(1).strip()
+
+    if not result["invitation_code"]:
+        inv_match = re.search(r'(?:\b|&|\s)(?:invitation_code|auth_token|token)=([^\s&]+)', text, re.I)
+        if inv_match:
+            result["invitation_code"] = inv_match.group(1).strip()
+
+    # 3. Fallback for standalone slug if URL was not present
+    if not result["slug"]:
+        tokens = [t for t in text.split() if not t.startswith("/")]
         if tokens:
             result["slug"] = tokens[0]
 

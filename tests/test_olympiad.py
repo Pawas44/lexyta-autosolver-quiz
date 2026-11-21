@@ -20,6 +20,13 @@ class TestOlympiadParser(unittest.TestCase):
         self.assertIsNone(parsed["invitation_code"])
         self.assertIsNone(parsed["key"])
 
+    def test_parse_real_jwt_invitation_code_with_dots(self):
+        token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmcmVzaCI6ZmFsc2UsImlhdCI6MTczNTIzNjUwMSwianRpIjoiOWMxZTk.bHltcGlhZF9pZCI"
+        url = f"https://olympiad.lexyta.com/8uicOlC454?invitation_code={token}"
+        parsed = parse_olympiad_input(f"/olympiad {url}")
+        self.assertEqual(parsed["slug"], "8uicOlC454")
+        self.assertEqual(parsed["invitation_code"], token)
+
     def test_parse_full_url_with_invitation_code(self):
         url = "https://olympiad.lexyta.com/8uicOlC454?invitation_code=INVITE_TOKEN_XYZ"
         parsed = parse_olympiad_input(url)
