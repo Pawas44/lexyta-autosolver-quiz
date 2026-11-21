@@ -15,6 +15,7 @@ from typing import Dict, Any, Optional, List
 from src.core.user_manager import UserManager
 from src.core.access_control import AccessController
 from src.client.lexyta_api import LexytaAPIClient
+from src.client.olympiad_api import OlympiadAPIClient, parse_olympiad_input
 from src.core.config import DEFAULT_GEMINI_KEY
 from src.engine.scanner import detect_active_classes, is_overdue
 from src.notifiers.dispatcher import format_datetime_ist
@@ -67,6 +68,7 @@ class TelegramServer:
             {"command": "autosolve", "description": "⚡ Toggle Auto-Solve (ON/OFF)"},
             {"command": "quiz", "description": "Check pending quizzes (kitne rehte hain)"},
             {"command": "solve", "description": "Solve pending quizzes with AI now"},
+            {"command": "olympiad", "description": "🏆 Solve Grand Quiz / Olympiad link"},
             {"command": "assignments", "description": "Check open assignments (jo de sakte hain)"},
             {"command": "notes", "description": "Download lecture notes, PPTs & outlines"},
             {"command": "marks", "description": "View released marks & results"},
@@ -379,6 +381,7 @@ class TelegramServer:
                         f"📋 <b>Aap Ye Commands Use Kar Sakte Hain:</b>\n"
                         f"• /quiz - Check karein kitne quiz rehte hain\n"
                         f"• /solve - Pending quizzes ko abhi AI se solve karein\n"
+                        f"• /olympiad - Grand Quiz / Olympiad link solve karein\n"
                         f"• /assignments - Jo assignments open hain aur de sakte hain\n"
                         f"• /notes - Lecture notes, PPTs & practical files download karein\n"
                         f"• /marks - Released marks & results dekhein\n"
@@ -432,6 +435,10 @@ class TelegramServer:
                     return
                 import threading
                 threading.Thread(target=self.handle_solve, args=(chat_id,), daemon=True).start()
+                return
+
+            elif cmd in ["/olympiad", "/grandquiz", "/olympiadsolve"]:
+                self.handle_olympiad_entry(chat_id, text)
                 return
 
             elif cmd in ["/assignments", "/assignment", "/pending"]:
@@ -560,6 +567,7 @@ class TelegramServer:
                     "• /autosolve - Auto-solve toggle karein (ON = AI auto-solve, OFF = notify only)\n"
                     "• /quiz - Check karein kitne quiz rehte hain jo attempt kar sakte hain\n"
                     "• /solve - Pending quizzes ko abhi Gemini AI se solve & submit karein\n"
+                    "• /olympiad - Grand Quiz & Olympiad (olympiad.lexyta.com) AI solver\n"
                     "• /assignments - Jo assignments open hain aur abhi submit kar sakte hain\n"
                     "• /notes - Lecture notes, PPTs & outlines download karein\n"
                     "• /marks - Released exam/quiz scores & results dekhein\n"
@@ -882,6 +890,263 @@ class TelegramServer:
         except Exception as e:
             logger.error(f"Error handling /solve: {e}", exc_info=True)
             self.send_message(chat_id, f"⚠️ Solve karte waqt error: {e}")
+        finally:
+            self.user_manager.release_solve_lock(chat_id)
+
+    def handle_olympiad_entry(self, chat_id: int, text: str):
+        """Entry point for /olympiad, /grandquiz commands."""
+        parts = text.split(maxsplit=1)
+        raw_args = parts[1].strip() if len(parts) > 1 else ""
+
+        if not raw_args:
+            help_text = (
+                "🏆 <b>Lexyta Grand Quiz & Olympiad AI Solver</b>\n\n"
+                "Grand Quizzes (<code>olympiad.lexyta.com</code>) ko solve karne ke 2 aasan steps:\n\n"
+                "🔹 <b>Tarika 1: Access Code Link (Join & Verify)</b>\n"
+                "Agar teacher ne access code wala link diya hai:\n"
+                "<code>/olympiad https://olympiad.lexyta.com/{slug}?access_code={code}</code>\n"
+                "<i>(Bot aapke registered email par Lexyta ki verification link bhejega)</i>\n\n"
+                "🔹 <b>Tarika 2: Email Verification Link (Direct Solve)</b>\n"
+                "Apne email par aayi hui link yahan send karein:\n"
+                "<code>/olympiad https://olympiad.lexyta.com/{slug}?invitation_code=...</code>\n"
+                "<i>(Bot attempt start karega, Gemini AI se answers nikalega aur human pacing ke sath submit karega!)</i>\n\n"
+                "🔹 <b>Tarika 3: Student Key</b>\n"
+                "<code>/olympiad https://olympiad.lexyta.com/{slug} key=YOUR_KEY</code>"
+            )
+            self.send_message(chat_id, help_text)
+            return
+
+        user = self.user_manager.get_user(chat_id)
+        if not user or not user.get("email"):
+            self.send_message(chat_id, "⚠️ Pehle apna Lexyta account bot se link karein: /start")
+            return
+
+        parsed = parse_olympiad_input(raw_args)
+        slug = parsed.get("slug")
+        if not slug:
+            self.send_message(chat_id, "⚠️ Link ya Olympiad slug detect nahi ho paya. Kripya valid URL ya slug bhejein.")
+            return
+
+        access_code = parsed.get("access_code")
+        invitation_code = parsed.get("invitation_code")
+        key = parsed.get("key")
+
+        # Case A: User supplied invitation_code OR key -> Direct solve!
+        if invitation_code or key:
+            if self.user_manager.is_user_solving(chat_id):
+                self.send_message(
+                    chat_id,
+                    "⚠️ <b>Quiz/Olympiad solving already chal raha hai!</b>\n\nUpar progress message dekhein. Jab tak wo pura na ho tab tak dobara command na bhejein."
+                )
+                return
+
+            if not self.user_manager.acquire_solve_lock(chat_id):
+                self.send_message(chat_id, "⚠️ Solving process busy hai. Kripya thoda wait karein.")
+                return
+
+            self.send_message(chat_id, "⚡ <i>Starting autonomous Grand Quiz solver...</i>")
+            threading.Thread(
+                target=self._run_olympiad_solve,
+                args=(chat_id, slug, parsed),
+                daemon=True
+            ).start()
+            return
+
+        # Case B: User supplied access_code -> Trigger email verification
+        if access_code:
+            self.send_message(chat_id, "⏳ <i>Access code verify karke email verification link bhej rahe hain...</i>")
+            try:
+                client = OlympiadAPIClient(user["email"])
+                base_info = client.get_base_info(slug)
+                exam_name = base_info.get("name", "Grand Quiz") if base_info else "Grand Quiz"
+
+                joined = client.join_by_access_code(slug, access_code)
+                if joined:
+                    success_msg = (
+                        f"✅ <b>Access Code Verified & Email Dispatched!</b>\n\n"
+                        f"🏆 <b>Exam:</b> {exam_name}\n"
+                        f"📧 <b>Sent to:</b> <code>{user['email']}</code>\n\n"
+                        f"📩 <b>Next Step (Solve):</b>\n"
+                        f"Apna Gmail/Email check karein aur aayi hui <b>Join link</b> ko copy karke yahan send karein:\n"
+                        f"<code>/olympiad https://olympiad.lexyta.com/{slug}?invitation_code=...</code>"
+                    )
+                    self.send_message(chat_id, success_msg)
+                else:
+                    self.send_message(
+                        chat_id,
+                        f"❌ <b>Access code reject ho gaya.</b>\n\n"
+                        f"Code <code>{access_code}</code> invalid ho sakta hai ya exam abhi active nahi hai."
+                    )
+            except Exception as e:
+                logger.error(f"Error joining olympiad {slug}: {e}", exc_info=True)
+                self.send_message(chat_id, f"⚠️ Error joining olympiad: {e}")
+            return
+
+        # Case C: User sent just slug without code
+        try:
+            client = OlympiadAPIClient(user["email"])
+            base_info = client.get_base_info(slug) or {}
+            exam_name = base_info.get("name", "Grand Quiz")
+            if base_info.get("has_access_code"):
+                self.send_message(
+                    chat_id,
+                    f"ℹ️ Exam <b>{exam_name}</b> ke liye <b>Access Code</b> zaroori hai.\n\n"
+                    f"Kripya code ke sath link bhejein:\n"
+                    f"<code>/olympiad https://olympiad.lexyta.com/{slug}?access_code=YOUR_CODE</code>"
+                )
+            elif base_info.get("has_student_keys"):
+                self.send_message(
+                    chat_id,
+                    f"ℹ️ Exam <b>{exam_name}</b> ke liye <b>Student Key</b> zaroori hai.\n\n"
+                    f"Format:\n"
+                    f"<code>/olympiad https://olympiad.lexyta.com/{slug} key=YOUR_KEY</code>"
+                )
+            else:
+                self.send_message(
+                    chat_id,
+                    f"ℹ️ Exam <b>{exam_name}</b> mila, par access credentials missing hain.\n"
+                    f"Email me aayi verification link bhejein."
+                )
+        except Exception as e:
+            self.send_message(chat_id, f"⚠️ Error checking olympiad {slug}: {e}")
+
+    def _run_olympiad_solve(self, chat_id: int, slug: str, parsed_data: Dict[str, Any]):
+        """Executes full autonomous solving of an Olympiad exam in background thread."""
+        user = self.user_manager.get_user(chat_id)
+        student_name = user.get("student_name", "Student") if user else "Student"
+        client = OlympiadAPIClient(user["email"])
+
+        try:
+            invitation_code = parsed_data.get("invitation_code")
+            key = parsed_data.get("key")
+
+            if invitation_code:
+                auth_ok = client.auth_with_token(slug, invitation_code)
+            elif key:
+                auth_ok = client.auth_with_key(slug, key)
+            else:
+                auth_ok = False
+
+            if not auth_ok:
+                self.send_message(
+                    chat_id,
+                    "❌ <b>Authentication Failed!</b>\n\nInvitation link expire ho chuki hai ya token invalid hai. Dobara access code se link generate karein."
+                )
+                return
+
+            base_info = client.get_base_info(slug) or {}
+            details = client.get_details(slug) or {}
+            exam_name = details.get("name") or base_info.get("name") or "Grand Quiz"
+
+            # Check if stopped
+            if details.get("status") in ["STOPPED", "CONCLUDED"]:
+                self.send_message(
+                    chat_id,
+                    f"⚠️ <b>Exam Closed:</b> <b>{exam_name}</b> ka time over ho chuka hai (Status: {details.get('status')})."
+                )
+                return
+
+            # Live Progress Tracker message
+            t_start = time.time()
+            init_text = (
+                f"🚀 <b>Grand Quiz Initialized!</b>\n\n"
+                f"👤 <b>Student:</b> {student_name}\n"
+                f"🏆 <b>Exam:</b> {exam_name}\n"
+                f"⏳ <b>Status:</b> Starting attempt & loading questions..."
+            )
+            prog_msg_id = self.send_message_get_id(chat_id, init_text)
+
+            # Start attempt
+            client.start_attempt(slug)
+
+            # Fetch assignment
+            assignment = client.get_assignment(slug)
+            if not assignment:
+                if prog_msg_id:
+                    self.edit_message(chat_id, prog_msg_id, f"⚠️ Questions load nahi ho paye for <b>{exam_name}</b>.")
+                return
+
+            sections = assignment.get("sections", [])
+            if not sections:
+                if prog_msg_id:
+                    self.edit_message(chat_id, prog_msg_id, f"⚠️ Koi questions section nahi mila for <b>{exam_name}</b>.")
+                return
+
+            total_q = sum(len(s.get("questions", [])) for s in sections)
+            if prog_msg_id:
+                self.edit_message(
+                    chat_id,
+                    prog_msg_id,
+                    format_quiz_progress_msg(exam_name, "Grand Quiz", 0, total_q, f"Found {total_q} questions. Gemini AI reasoning engine active...", student_name=student_name)
+                )
+
+            # Solving with Gemini
+            gemini_key = user.get("gemini_api_key") or DEFAULT_GEMINI_KEY
+            solver = GeminiQuizSolver(gemini_key)
+
+            def on_progress(completed: int, total: int, step_desc: str):
+                if prog_msg_id:
+                    self.edit_message(
+                        chat_id,
+                        prog_msg_id,
+                        format_quiz_progress_msg(exam_name, "Grand Quiz", completed, total, step_desc, student_name=student_name)
+                    )
+
+            answers = solver.solve_quiz(sections, on_progress=on_progress)
+            if not answers:
+                if prog_msg_id:
+                    self.edit_message(chat_id, prog_msg_id, f"❌ AI answers generate nahi kar paya for <b>{exam_name}</b>.")
+                return
+
+            # Pacing
+            time_limit = assignment.get("time_limit")
+            due_date = details.get("end_date")
+            target_dur = calculate_target_duration_seconds(time_limit, total_q, due_date_str=due_date)
+
+            def on_pace_tick(elapsed_sec: float, remaining_sec: float, status_str: str):
+                if prog_msg_id:
+                    self.edit_message(
+                        chat_id,
+                        prog_msg_id,
+                        format_quiz_progress_msg(exam_name, "Grand Quiz", len(answers), total_q, status_str, student_name=student_name)
+                    )
+
+            wait_with_human_pacing(t_start, target_dur, on_tick=on_pace_tick, tick_interval=15.0, total_questions=total_q)
+
+            # Submit
+            if client.submit_attempt(slug, answers):
+                elapsed = time.time() - t_start
+                latest = client.get_latest_attempt(slug) or {}
+                score_str = ""
+                if latest.get("score") is not None:
+                    max_score = latest.get("max_score", "")
+                    score_str = f"\n📊 <b>Score:</b> {latest.get('score')} / {max_score}"
+
+                dur_min = int(elapsed // 60)
+                dur_sec = int(elapsed % 60)
+                dur_display = f"{dur_min}m {dur_sec}s" if dur_min > 0 else f"{dur_sec}s"
+
+                final_msg = (
+                    f"🎉 <b>Grand Quiz Solved & Submitted!</b>\n\n"
+                    f"👤 <b>Student:</b> {student_name}\n"
+                    f"🏆 <b>Exam:</b> {exam_name}\n"
+                    f"✅ <b>Answered:</b> {len(answers)} / {total_q} questions (100%)\n"
+                    f"⏱️ <b>Time Recorded:</b> {dur_display} (Stealth Human Pacing 🛡️)\n"
+                    f"🎯 <b>Status:</b> SUBMITTED & RECORDED{score_str}\n\n"
+                    f"🛡️ <i>Direct API submission — zero browser proctoring events triggered!</i>\n"
+                    f"🌐 https://olympiad.lexyta.com"
+                )
+                if prog_msg_id:
+                    self.edit_message(chat_id, prog_msg_id, final_msg)
+                else:
+                    self.send_message(chat_id, final_msg)
+            else:
+                if prog_msg_id:
+                    self.edit_message(chat_id, prog_msg_id, f"❌ Submission failed on Olympiad server for <b>{exam_name}</b>.")
+
+        except Exception as e:
+            logger.error(f"Error solving olympiad {slug}: {e}", exc_info=True)
+            self.send_message(chat_id, f"⚠️ Grand Quiz solve karte waqt error aaya: {e}")
         finally:
             self.user_manager.release_solve_lock(chat_id)
 
